@@ -12,65 +12,168 @@
 #include <mutex>
 #include <condition_variable>
 #include <queue>
+#include <fstream>
+#include <sstream>
 
-// Global variables, I know, yucky.
+
+
+// Global variables
 std::queue<std::string> messageQueue; // Shared buffer for messages
 std::mutex queueMutex; // Mutex to protect the shared buffer
 std::condition_variable queueCV; // Condition variable for signaling
 int globalport; // m_SelectedPort isnt accessible when file->close is called. Cherno's gonna hit me over the head with a chair for this
 bool stopThreads = false; // Flag to signal threads to stop
+bool showPopup = false;
 std::string Out; // dump buffer received from server to user in textbox.
+bool OpenSettings = false;
+SOCKET ConnectSocket; // Global socket shared amongst send and recv threads. I know, its horrible :(
+sockaddr_in clientService;
+char ipbuf[20] = { 0 };
+char portbuf[6] = { 0 };
+bool connectionAquired = false;
+
+
+struct SaveData { // Default settings. Change to microcontroller IP:PORT
+	std::string ipAddress = "127.0.0.1";
+	int port = 5000;
+
+}m_SaveData;
+
 
 DWORD WINAPI receiveThread(LPVOID lpParam) {
-	SOCKET clientSocket = reinterpret_cast<SOCKET>(lpParam); // Cast the LPVOID back to SOCKET
+	SOCKET clientSocket = reinterpret_cast<SOCKET>(lpParam);
 	char buffer[1024];
 	int bytesReceived;
-	while (true) {
-		// Receive data from the server
-		bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
+	while (!stopThreads) {
+		bytesReceived = recv(clientSocket, buffer, sizeof(buffer) - 1, 0);
 		if (bytesReceived > 0) {
-			buffer[bytesReceived] = '\0';
-			Out.append("\n [+] " +  std::string(buffer));
-			// Lock the mutex before accessing the shared buffer
+			buffer[bytesReceived] = '\0'; // Null-terminate the received data
 			std::lock_guard<std::mutex> lock(queueMutex);
-			// Place the received message into the buffer
 			messageQueue.push(std::string(buffer));
-			// Notify the main thread that new data is available
 			queueCV.notify_one();
+			if (connectionAquired) {Out.append("\n [+] " + std::string(buffer));}
+			
 		}
 		else {
-			// Handle error or connection closed
 			break;
 		}
 	}
+	return 0;
 }
 
-// Function to handle sending data to the server
-//void sendThread(SOCKET clientSocket) {
 DWORD WINAPI sendThread(LPVOID lpParam) {
-	SOCKET clientSocket = (SOCKET)lpParam;
+	SOCKET clientSocket = reinterpret_cast<SOCKET>(lpParam);
 	while (!stopThreads) {
-		// Wait for data to be available in the buffer
 		std::unique_lock<std::mutex> lock(queueMutex);
-		queueCV.wait(lock, [] { return !messageQueue.empty(); });
-		// Get the message from the buffer
+		queueCV.wait(lock, [] { return !messageQueue.empty() || stopThreads; });
+		if (stopThreads) break;
 		std::string message = messageQueue.front();
 		messageQueue.pop();
-		lock.unlock(); // Unlock the mutex before sending data
-		// Send the message to the server
+		lock.unlock();
 		send(clientSocket, message.c_str(), message.size(), 0);
 		printf("Sent: %s\n", message.c_str());
+		
 	}
+	return 0;
+}
+
+void AttemptConnect(SaveData data) {
+	ConnectSocket = socket(AF_INET, SOCK_STREAM, 0);
+	clientService.sin_family = AF_INET;
+	clientService.sin_addr.s_addr = inet_addr(data.ipAddress.c_str());
+	clientService.sin_port = htons(data.port);
+	if (connect(ConnectSocket, (SOCKADDR*)&clientService, sizeof(clientService)) == SOCKET_ERROR) {
+
+		int error_code = WSAGetLastError();
+		printf("Unable to connect to server.%d\n", error_code);
+		WSACleanup();
+	}
+	send(ConnectSocket, "W", 1, 0);
+}
+
+void OpenSettingsFile() {
+	static char buffer[1024 * 16]; // Buffer to store file contents
+
+	static std::string filePath;
+	ImGui::SetNextWindowSize(ImVec2(300, 400), ImGuiCond_FirstUseEver);
+	ImGui::OpenPopup("Text Editor");
+
+	if (ImGui::BeginPopupModal("Text Editor", &OpenSettings, ImGuiWindowFlags_NoTitleBar)) {
+		
+		ImGui::Text("Current Settings:");
+		// Open file dialog and load selected file into buffer
+		std::string selectedFilePath = "Settings.txt";
+		if (!selectedFilePath.empty()) {
+			filePath = selectedFilePath;
+			std::ifstream file(filePath);
+			if (file) {
+				std::stringstream bufferStream;
+				bufferStream << file.rdbuf();
+				std::string fileContents = bufferStream.str();
+				strncpy(buffer, fileContents.c_str(), sizeof(buffer));
+				file.close();
+				ImGui::Text(fileContents.c_str());
+			}
+		}
+	}
+		
+	ImGui::Text("EDIT Settings:");
+	ImGui::InputText("##Textbox1", ipbuf, sizeof(ipbuf));
+	ImGui::InputText("##Textbox2:", portbuf, sizeof(portbuf));
+	if (ImGui::Button("Save")) {
+		// Save buffer contents to file
+		std::ofstream file(filePath);
+		if (file) {
+			SaveData data;
+			data.ipAddress = std::string(ipbuf);
+			data.port = atoi(portbuf);
+			AttemptConnect(data);
+			file << ipbuf << "\n" << portbuf;
+			file.close();
+		}
+	}
+
+	ImGui::SameLine();
+	if (ImGui::Button("Close")) {
+		ImGui::CloseCurrentPopup();
+		OpenSettings = false;	
+	}
+
+	ImGui::EndPopup();
+}
+
+
+void OpenAbout() {
+	ImGui::SetNextWindowSize(ImVec2(1000, 1000), ImGuiCond_FirstUseEver);
+	ImGui::OpenPopup("Popup Window");
+	
+	if (ImGui::BeginPopupModal("Popup Window", &showPopup, /*ImGuiWindowFlags_NoResize |*/ ImGuiWindowFlags_NoTitleBar)) {
+		ImGui::Text("This Program is intended to Send (and recieve) data to a Microcontroller \nVia raw WiFi sockets or through USB Serial Port.");
+		ImGui::Text("Toggle Between Network Mode and Serial Mode.");
+		ImGui::Text("Network Mode would send data to a IP:PORT set in the settings.");
+		ImGui::Text("Serial Mode would send data to serial ports selected in the dropdown menu.");
+		ImGui::Text("Mouse Mode sends X and Y coordinates\n Buffer looks like: '\X(int)Y(int)' for the microcontroller to parse.");
+		}
+	ImGui::NewLine();
+	if (ImGui::Button("Close")) {
+		ImGui::CloseCurrentPopup();
+		showPopup = false;
+	}
+
+	ImGui::EndPopup();
 }
 
 
 class ExampleLayer : public Walnut::Layer
 {
 public:
-	// Needed to handle yucky necessary char buffers.
+	// I think each frame is messing with buffer contents.
+	// Something is populating my buffers with non ascii printable chars.
+	// microcontroller's fault?
 	ExampleLayer() {
-		buf = new unsigned char[128];
-		m_UserInput = new char[128];
+		buf = new unsigned char[128]; // seperate buffer, this hopefully wont get rewritten to every single frame
+		m_UserInput = new char[128]; // ImGUI::TextBox input. 
+		// I can tell my buffer management needs work. TODO: make buffer class!!!
 	}
 	~ExampleLayer() {
 		delete[] buf;
@@ -87,32 +190,46 @@ public:
 		WSACleanup();
 	}
 
+
 	virtual void OnAttach() override {
 		WSADATA wsaData;
 		if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
 			printf( "WSAStartup failed\n");
 			//return 1;
 		}
+
+
+		// read settings from file.
+		std::ifstream m_SettingsFile("Settings.txt");
+		if (m_SettingsFile.is_open()) {
+			std::string line;
+			for (int i = 0; i < 2; i++) {
+				std::getline(m_SettingsFile, line);
+				if (i == 1) {
+					m_SaveData.port = std::stoi(line);
+				}
+				else if (i == 0) {
+					m_SaveData.ipAddress = line;
+				}
+			}
+			m_SettingsFile.close();
+		}
+		else { 
+			// default settings
+			std::ofstream file("Settings.txt");
+			if (file.is_open()) {
+				file << m_SaveData.ipAddress << std::endl;
+				file << m_SaveData.port << std::endl;
+				file.close();
+			}
+		}
 		
-		std::string ipAddress = "192.168.0.222";
-		int port = 5000;
+		// Setup Sockets. Attempts of connection will happen by button.
 		ConnectSocket = socket(AF_INET, SOCK_STREAM, 0);
 		clientService.sin_family = AF_INET;
-		clientService.sin_addr.s_addr = inet_addr(ipAddress.c_str());
-		clientService.sin_port = htons(port);
-		if (connect(ConnectSocket, (SOCKADDR*)&clientService, sizeof(clientService)) == SOCKET_ERROR) {
-			
-			int error_code = WSAGetLastError();
-			printf("Unable to connect to server.%d\n", error_code);
-			WSACleanup();
-		}
-		send (ConnectSocket, "W", 1, 0);
-		/*
-		std::thread recvThread(receiveThread, clientSocket);
-		std::thread sendThread(sendThread, clientSocket);
-		*/
-		HANDLE hReadThread = CreateThread(NULL, 0, receiveThread, (LPVOID)ConnectSocket, 0, NULL);
-		HANDLE hSendThread = CreateThread(NULL, 0, sendThread, (LPVOID)ConnectSocket, 0, NULL);
+		clientService.sin_addr.s_addr = inet_addr(m_SaveData.ipAddress.c_str());
+		clientService.sin_port = htons(m_SaveData.port);
+
 
 		m_Image = std::make_shared<Walnut::Image>("Scuzzy.png");
 
@@ -138,14 +255,26 @@ public:
 	virtual void OnUIRender() override
 	{
 
+
 		ImGui::Begin("Serial Comunication");
-		/*
-		if (ImGui::Button("BALLS")) {
-			m_ShowImage = !m_ShowImage;
-		}*/
+
+		if (OpenSettings) {
+			OpenSettingsFile();
+		}
+		if (showPopup) {
+			OpenAbout();
+		}
+		
 		ImGui::SameLine();
-		if (ImGui::Button("Toggle Mouse Mode")) {
-			m_Mousemode = !m_Mousemode;
+		if (!m_MouseMode) {
+			if (ImGui::Button("Toggle Mouse Mode")) {
+				m_MouseMode = !m_MouseMode;
+			}
+		}
+		else {
+			if(ImGui::Button("Text Mode")) {
+				m_MouseMode = !m_MouseMode;
+			}
 		}
 		ImGui::SameLine();
 		ImGui::PushItemWidth(200);
@@ -155,10 +284,31 @@ public:
 			if (m_NetworkMode) {
 				int error_code;
 				int error_code_size = sizeof(error_code);
+
 				getsockopt(ConnectSocket, SOL_SOCKET, SO_ERROR, (char*)&error_code, &error_code_size);
 				if (error_code == SOCKET_ERROR) {
-					printf("fuckywucky %d\n", error_code);
+					printf("Connection Attempt failed: %d\n", error_code);
 				}
+				if (!connectionAquired) {
+					if (connect(ConnectSocket, (SOCKADDR*)&clientService, sizeof(clientService)) == SOCKET_ERROR) {
+
+						int error_code = WSAGetLastError();
+						printf("Unable to connect to server.%d\n", error_code);
+						//WSACleanup();
+					}
+					else {
+						send(ConnectSocket, "W", 1, 0);
+
+						//HANDLE hReadThread = CreateThread(NULL, 0, receiveThread, (LPVOID)ConnectSocket, 0, NULL);
+						//HANDLE hSendThread = CreateThread(NULL, 0, sendThread, (LPVOID)ConnectSocket, 0, NULL);
+						std::thread recvThread(&receiveThread, static_cast<void*>(&ConnectSocket));
+						std::thread sendThread(&sendThread, static_cast<void*>(&ConnectSocket));
+						connectionAquired = true;
+					}
+				}
+			}
+			else {
+				closesocket(ConnectSocket);
 			}
 		}
 
@@ -172,25 +322,21 @@ public:
 				int size = m_ComPorts.size();
 				for (int i = 0; i < size; i++) {
 					bool isSelected = (m_SelectedPort == i);
+					int tmp = m_ComPorts.at(i);
+					std::string item = std::to_string(tmp);
 
-					//m_ComPorts.at(i).c_str();
-					//  "expression must have class type but it has type "int""
-					// is the stupidest error ive ever seen. Forced to convert it three times.
-					int tmp = m_ComPorts.at(i); // stupid
-					//tmp.c_str(); // r u buttering my pancakes rn
-					std::string item = std::to_string(tmp); // just convert a damn int from a vector to a char AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH
-
-					if (ImGui::Selectable(item.c_str() /*im going to commit crimes*/, isSelected)) {
+					if (ImGui::Selectable(item.c_str(), isSelected)) {
 						m_SelectedPort = i;
 						globalport = i;
 						// Attempt to connect to Selected Serial Port.
-						char mode[] = { '8','N','1',0 }; // Serial port magic dont touch it 
+						char mode[] = { '8','N','1',0 }; // Serial port config. this sets bit mode & parity. 
 
-						if (RS232_OpenComport(m_ComPorts.at(m_SelectedPort) - 1, 9600, mode, 0))
+						if (RS232_OpenComport(m_ComPorts.at(m_SelectedPort) , 115200, mode, 0)) // (ComPort, Baudrate, mode, flowcontrol)
 						{
 							//printf("Can not open comport COM%i\n", m_ComPorts.at(m_SelectedPort));
-							ErrorMsg = "Can not open comport COM" + std::to_string(m_ComPorts.at(m_SelectedPort));
+							ErrorMsg = "Can not open comport COM" + std::to_string(m_ComPorts.at(m_SelectedPort) -1);
 						}
+						printf("Connected to com port: %d", m_ComPorts.at(m_SelectedPort) );
 					}
 					if (isSelected) {
 						ImGui::SetItemDefaultFocus();
@@ -199,20 +345,6 @@ public:
 				ImGui::EndCombo();
 			}
 		}
-		//else {
-		//	ImGui::NewLine();
-		//	// TODO: Two text boxes for IP and Port.
-		//	static char buf1[128];
-		//	ImGui::InputText("ip", buf1, 128);
-		//	// Add a new line to move to the next line
-		//	ImGui::SameLine();
-
-		//	// Set the cursor position on the X-axis
-		//	//ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 300);
-		//	// Add second text box
-		//	static char buf2[128];
-		//	ImGui::InputText("port", buf2, 128);
-		//}
 
 
 		// Check if the dropdown menu is clicked to open
@@ -245,15 +377,14 @@ public:
 		else {
 			isDropdownOpen = false;
 		}
-		// Stop messing with size of ImGUI objects.
+		
 		ImGui::PopItemWidth();
-		//ImGui::SameLine();
-		//ImGui::NewLine();
 		ImGui::Text(ErrorMsg.c_str());
 
+		
 
 		// Toggles between Sending Mouse Coordinates or Text.
-		if (m_Mousemode) {
+		if (m_MouseMode) {
 
 			ImGui::Text("Hold Left Click over the image to Send coords!");
 			ImVec2 imagePos = ImGui::GetCursorScreenPos();
@@ -272,80 +403,82 @@ public:
 				// Michael's arduino parses this to control two servo motors for Pan And Yaw. Yee Haw.
 				char coords[10];
 				std::string temp;
+				temp += "\\"; // this is a custom command format, the microcontroller will parse this for the ints.
 				temp += "X";
 				temp += std::to_string((int)relativePos.x);
 				temp += "Y";
 				temp += std::to_string((int)relativePos.y);
 				temp += "\n";
 
-				//RS232_SendBuf(2, reinterpret_cast<unsigned char*>(temp.c_str()), temp.size());
-				//unsigned char* charArray = reinterpret_cast<const unsigned char*>(temp.c_str());
-				// Dont take strings for granted.
 				unsigned char* charArray = new unsigned char[temp.size()];
 				std::memcpy(charArray, temp.c_str(), temp.size());
 				// Send Mouse Position over Serial.
 				if (!m_NetworkMode) {
-					RS232_SendBuf(m_ComPorts.at(m_SelectedPort) - 1, charArray, temp.size());
+					RS232_SendBuf(m_ComPorts.at(m_SelectedPort) , charArray, temp.size());
 				}
 				else {
-					// TODO: Send Mouse Position over Network.
-					//send(ConnectSocket, temp.c_str(), temp.size(), 0);
+					// Send over Network:
 					std::lock_guard<std::mutex> lock(queueMutex);
 					messageQueue.push(temp.c_str());
 				}
 
-				std::this_thread::sleep_for(std::chrono::milliseconds(15));
+				std::this_thread::sleep_for(std::chrono::milliseconds(15)); // Dont Overload the Microcontroller!!!!
 			}
 
 		}
-		else {// Send Text to Serial.
+		else {	// Send Text to Serial.
 
 			// Read from COM port.
 			if (!m_NetworkMode) {
-				int n = RS232_PollComport(m_ComPorts.at(m_SelectedPort), buf, 128);
+				int n = RS232_PollComport(m_ComPorts.at(m_SelectedPort) , buf, 128);
 
 				if (n > 0)
 				{
-					buf[n] = 0; // Null terminate.
-					// convert the buffer to a string. char buffers make me sad theres gotta be a better way to send text.
-					for (int i = 0; i < n; i++) {
-						if (buf[i] == ' ') {
-							m_Out += buf[i];
-						}
-						// spaces are weird.
-						if (buf[i] >= 32)
-							m_Out += buf[i];
+					printf("\nreceived %i bytes: %s\n", n, (char*)buf);
+					m_Out += "\n [+] ";
+					for (int i = 0; i < n; i++) { 
+						m_Out += buf[i]; // I think each frame is messing with my buffers.
+						// I seperated them so its not constant garbage.
 					}
 					m_Out += "\n";
 
-					printf("received %i bytes: %s\n", n, (char*)buf);
+					
+					Out += m_Out; // This makes me upset. TODO: make that damn buffer class
+					memset(buf, 0, sizeof buf);
+					m_Out = "";
 				}
+
 			}
 			else {
+				// RECIEVE THREAD SHOULD POPULATE 
 
-				// Maybe the recv thread should copy the buffer it recieves into the m_Out string.
-
-				// TODO: Read a buffer from the server.
-				//char* readbuf = new char[128];
-				//recv(ConnectSocket, readbuf, 128, 0);
-				// 
-
-				//std::unique_lock<std::mutex> lock(queueMutex); // Make sure no thread is overwriting what i want to read
-				////queueCV.wait(lock, [] { return !messageQueue.empty() || stopThreads; }); // Wait for data to be available in the buffer
-				//std::string message;
-				//	// Check if new data is available
-				//if (!messageQueue.empty()) {
-				//	// Get the message from the buffer
-				//	message = messageQueue.front();
-				//	messageQueue.pop();
-				//	queueMutex.unlock(); // Unlock the mutex after retrieving data
-				//}
-				m_Out = Out; // set the buffer to a global var :(
+				std::unique_lock<std::mutex> lock(queueMutex); // Make sure no thread is overwriting what i want to read
+				//queueCV.wait(lock, [] { return !messageQueue.empty() || stopThreads; }); // Wait for data to be available in the buffer
+				std::string message;
+					// Check if new data is available
+				if (!messageQueue.empty()) {
+					// Get the message from the buffer
+					message = messageQueue.front();
+					messageQueue.pop();
+				}
+				queueMutex.unlock();
+				//m_Out = Out;
+				
 
 			}
 			
-			ImGui::Text("Serial Comunication.\nInput:");
-			ImGui::InputText("##Text", m_UserInput, IM_ARRAYSIZE(m_UserInput));
+			ImGui::Text("Serial Comunication.\tCurrent Mode: ");
+			if (m_NetworkMode) {
+				ImGui::SameLine();
+				ImGui::Text("Network Mode");
+			}
+			else {
+				ImGui::SameLine();
+				ImGui::Text("Serial Mode!");
+			}
+			ImGui::Text("Input:");
+			//ImGui::InputText("##Text", m_UserInput, IM_ARRAYSIZE(m_UserInput));
+			ImGui::InputText("##Text", m_UserInput, 128); // Set limit for buffer debug purposes
 			ImGui::SameLine;
 			if (ImGui::Button("Send")) {
 				int i;
@@ -353,10 +486,21 @@ public:
 					if (m_UserInput[i] == '\n') {
 						break;
 					}
+					if (m_UserInput[i] == '\0') { // find index of end of null terminated string
+						break;
+					}
 				}
+				printf("\n%d byte DUMP:", i);
+				printf("\n%.*s", i, m_UserInput);
+				// We have user input, send over user selected protocol
 				if (!m_NetworkMode) {
 					// Write to COM port.
-					RS232_SendBuf(m_ComPorts.at(m_SelectedPort), reinterpret_cast<unsigned char*>(m_UserInput), i);
+					int e = RS232_SendBuf(m_ComPorts.at(m_SelectedPort), reinterpret_cast<unsigned char*>(m_UserInput), i);
+					if (e < 0) {
+						printf("\nWriting failed! Port: %d", m_ComPorts.at(m_SelectedPort));
+						printf("\n%.*s", i, m_UserInput);
+					}
+					printf("\nWrote %d bytes on Comport %d", e, m_ComPorts.at(m_SelectedPort));
 				}
 				else {
 					// TODO: Send Text to Server.
@@ -367,66 +511,50 @@ public:
 				}
 				memset(m_UserInput, 0, sizeof(m_UserInput)); // clear the user input buffer after sending.
 			}
-			ImGui::BeginChild("##Text Box", ImVec2(400, 300), true, ImGuiWindowFlags_NoScrollbar);
-			ImGui::Text(m_Out.c_str());
-			ImGui::EndChild();
-			std::memset(buf, 0, sizeof(buf)); // clear the buffer.
-			/*
-			for (int i = 0; i < 128; i++) {
-				if ([i] == 0) {
-					break;
-				}
-				ImGui::Text("%c", str0[i]);	
-				ImGui::SameLine;
-			}
-			*/
 
+			ImGui::SameLine();
+			if (ImGui::Button("Clear Buffer")) {
+				Out = ""; // This is the "console window" in Text Mode. 
+			}
+			ImGui::BeginChild("##Text Box", ImVec2(400, 300), true, ImGuiWindowFlags_NoScrollbar);
+			ImGui::Text(Out.c_str()); 
+			ImGui::EndChild();
 
 		}
 
 		ImGui::End();
 
-		//UI_DrawAboutModal();
 	}
 
-	/*
-	SOCKET ConnectToServer(std::string ipAddress, int port) {
-		SOCKET ConnectSocket = socket(AF_INET, SOCK_STREAM, 0);
-		sockaddr_in clientService;
-		clientService.sin_family = AF_INET;
-		clientService.sin_addr.s_addr = inet_addr(ipAddress.c_str());
-		clientService.sin_port = htons(port);
-		connect(ConnectSocket, (SOCKADDR*)&clientService, sizeof(clientService));
-		return ConnectSocket;
-	}
-	*/
 
 private:
-	SOCKET ConnectSocket;
-	sockaddr_in clientService;
 
 	std::vector<int> m_ComPorts; // Dynamic array of available COM ports.
 	bool m_AboutModalOpen = false;
-	bool m_Mousemode = false; // Toggles Mouse mode.
+	bool m_MouseMode = false; // Toggles Mouse mode.
 	bool m_NetworkMode = false; // Switches between serial and network mode.
 	std::shared_ptr<Walnut::Image> m_Image; // When playing with Walnut, i had an AI gen'd image of Giygas from Earthbound. This is it.
-	static std::string m_Out; // Command to send to Arduino / Pico W (for the laser turret by Michael Reeves)
-	std::string ErrorMsg; // For telling the user they probably selected the wrong com port.
+	static std::string m_Out; // This is the backgroud buffer that will eventually get written to the forward buffer on screen.
+	std::string ErrorMsg; // For telling the user they probably selected the wrong com port. could be a popup? annoying
 	int m_SelectedPort = 0;
 	unsigned char* buf; // Buffer for incoming data from serial port.
-	static char* m_UserInput; // Obligatory buffer for user input. Yucky.
+	static char* m_UserInput; // Obligatory buffer for user input.
+	std::ifstream m_SettingsFile;
+
 };
 
 // Shameful Global variables. Unresolved external symbol error happens if I don't have this here. There's probably a better way.
+
 char* ExampleLayer::m_UserInput = nullptr;
 std::string ExampleLayer::m_Out; // Cherno would smite me for this.
 //int globalport; // m_SelectedPort isnt accessible when file->close is called. Cherno's gonna hit me over the head with a chair for this
 
 
+
 Walnut::Application* Walnut::CreateApplication(int argc, char** argv)
 {
 	Walnut::ApplicationSpecification spec;
-	spec.Name = "Walnut Example";
+	spec.Name = "Serial Comunication Walnut App";
 
 	Walnut::Application* app = new Walnut::Application(spec);
 	app->PushLayer<ExampleLayer>();
@@ -441,10 +569,17 @@ Walnut::Application* Walnut::CreateApplication(int argc, char** argv)
 			ImGui::EndMenu();
 		}
 		if (ImGui::BeginMenu("Edit")) {
-			if (ImGui::MenuItem("test")) {
+			
 
+			if (ImGui::MenuItem("Settings")) {
+				OpenSettings = true;
 			}
+			if (ImGui::MenuItem("About")) {
+				showPopup = true;
+			}
+
 			ImGui::EndMenu();
+
 		}
 	});
 	return app;
