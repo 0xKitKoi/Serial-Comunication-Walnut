@@ -13,7 +13,7 @@
 #include <condition_variable>
 #include <queue>
 
-// Global variables
+// Global variables, I know, yucky.
 std::queue<std::string> messageQueue; // Shared buffer for messages
 std::mutex queueMutex; // Mutex to protect the shared buffer
 std::condition_variable queueCV; // Condition variable for signaling
