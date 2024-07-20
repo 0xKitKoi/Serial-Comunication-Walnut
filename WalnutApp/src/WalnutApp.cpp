@@ -110,7 +110,7 @@ void OpenSettingsFile() {
 				std::stringstream bufferStream;
 				bufferStream << file.rdbuf();
 				std::string fileContents = bufferStream.str();
-				strncpy(buffer, fileContents.c_str(), sizeof(buffer));
+				strncpy_s(buffer, fileContents.c_str(), sizeof(buffer));
 				file.close();
 				ImGui::Text(fileContents.c_str());
 			}
@@ -152,7 +152,7 @@ void OpenAbout() {
 		ImGui::Text("Toggle Between Network Mode and Serial Mode.");
 		ImGui::Text("Network Mode would send data to a IP:PORT set in the settings.");
 		ImGui::Text("Serial Mode would send data to serial ports selected in the dropdown menu.");
-		ImGui::Text("Mouse Mode sends X and Y coordinates\n Buffer looks like: '\X(int)Y(int)' for the microcontroller to parse.");
+		ImGui::Text("Mouse Mode sends X and Y coordinates\n Buffer looks like: '\\X(int)Y(int)' for the microcontroller to parse.");
 		}
 	ImGui::NewLine();
 	if (ImGui::Button("Close")) {
@@ -188,6 +188,7 @@ public:
 		//hSendThread.join();
 
 		WSACleanup();
+		printf("Done.");
 	}
 
 
@@ -331,12 +332,12 @@ public:
 						// Attempt to connect to Selected Serial Port.
 						char mode[] = { '8','N','1',0 }; // Serial port config. this sets bit mode & parity. 
 
-						if (RS232_OpenComport(m_ComPorts.at(m_SelectedPort) , 115200, mode, 0)) // (ComPort, Baudrate, mode, flowcontrol)
+						if (RS232_OpenComport(m_ComPorts.at(m_SelectedPort) -1 , 115200, mode, 0)) // (ComPort, Baudrate, mode, flowcontrol)
 						{
 							//printf("Can not open comport COM%i\n", m_ComPorts.at(m_SelectedPort));
-							ErrorMsg = "Can not open comport COM" + std::to_string(m_ComPorts.at(m_SelectedPort) -1);
+							ErrorMsg = "Can not open comport COM" + std::to_string(m_ComPorts.at(m_SelectedPort) - 1);
 						}
-						printf("Connected to com port: %d", m_ComPorts.at(m_SelectedPort) );
+						printf("Connected to com port: %d", m_ComPorts.at(m_SelectedPort) - 1);
 					}
 					if (isSelected) {
 						ImGui::SetItemDefaultFocus();
@@ -401,7 +402,7 @@ public:
 			if (ImGui::IsMouseDragging(0)) {
 				//printf("Holding mouse button down.\n");
 				// Michael's arduino parses this to control two servo motors for Pan And Yaw. Yee Haw.
-				char coords[10];
+				//char coords[10];
 				std::string temp;
 				temp += "\\"; // this is a custom command format, the microcontroller will parse this for the ints.
 				temp += "X";
@@ -409,12 +410,23 @@ public:
 				temp += "Y";
 				temp += std::to_string((int)relativePos.y);
 				temp += "\n";
+				temp += '\0';
 
 				unsigned char* charArray = new unsigned char[temp.size()];
 				std::memcpy(charArray, temp.c_str(), temp.size());
 				// Send Mouse Position over Serial.
 				if (!m_NetworkMode) {
-					RS232_SendBuf(m_ComPorts.at(m_SelectedPort) , charArray, temp.size());
+					//RS232_SendBuf(m_ComPorts.at(m_SelectedPort) - 1, charArray, temp.size());
+					//RS232_cputs(m_ComPorts.at(m_SelectedPort) - 1, temp.c_str());
+
+					int e = RS232_SendBuf(m_ComPorts.at(m_SelectedPort) - 1, charArray, temp.size());
+					//RS232_cputs((m_ComPorts.at(m_SelectedPort) - 1), m_UserInput);
+
+					if (e < 0) {
+						printf("\nWriting failed! Port: %d", m_ComPorts.at(m_SelectedPort) - 1);
+						printf("\n%.*s", temp.size(), m_UserInput);
+					}
+					printf("\nWrote %d bytes (%s) on Comport %d", e , temp, m_ComPorts.at(m_SelectedPort) - 1);
 				}
 				else {
 					// Send over Network:
@@ -422,7 +434,7 @@ public:
 					messageQueue.push(temp.c_str());
 				}
 
-				std::this_thread::sleep_for(std::chrono::milliseconds(15)); // Dont Overload the Microcontroller!!!!
+				std::this_thread::sleep_for(std::chrono::milliseconds(50)); // Dont Overload the Microcontroller!!!!
 			}
 
 		}
@@ -430,23 +442,25 @@ public:
 
 			// Read from COM port.
 			if (!m_NetworkMode) {
-				int n = RS232_PollComport(m_ComPorts.at(m_SelectedPort) , buf, 128);
+				unsigned char buffer[128];
+				int n = RS232_PollComport(m_ComPorts.at(m_SelectedPort) - 1, buffer, 128);
 
 				if (n > 0)
 				{
-					printf("\nreceived %i bytes: %s\n", n, (char*)buf);
+					printf("\nreceived %i bytes: %s\n", n, (char*)buffer);
 					m_Out += "\n [+] ";
 					for (int i = 0; i < n; i++) { 
-						m_Out += buf[i]; // I think each frame is messing with my buffers.
+						m_Out += buffer[i]; // I think each frame is messing with my buffers.
 						// I seperated them so its not constant garbage.
 					}
 					m_Out += "\n";
 
 					
 					Out += m_Out; // This makes me upset. TODO: make that damn buffer class
-					memset(buf, 0, sizeof buf);
+					
 					m_Out = "";
 				}
+				memset(buffer, 0, sizeof buffer);
 
 			}
 			else {
@@ -479,28 +493,36 @@ public:
 			ImGui::Text("Input:");
 			//ImGui::InputText("##Text", m_UserInput, IM_ARRAYSIZE(m_UserInput));
 			ImGui::InputText("##Text", m_UserInput, 128); // Set limit for buffer debug purposes
-			ImGui::SameLine;
+			//printf("\n%.*s", 128, m_UserInput);
+			ImGui::SameLine();
 			if (ImGui::Button("Send")) {
 				int i;
 				for (i = 0; i < 128; i++) {
-					if (m_UserInput[i] == '\n') {
+					if (m_UserInput[i] == '\0') { // find index of end of null terminated string
+						printf("\nFound \\0 at end, %d", i);
 						break;
 					}
-					if (m_UserInput[i] == '\0') { // find index of end of null terminated string
+					if (m_UserInput[i] == '\n') {
+						printf("\nFound \\n at end, %d", i);
 						break;
 					}
 				}
+				m_UserInput[i] = '\n';
+				m_UserInput[i + 1] = '\0';
 				printf("\n%d byte DUMP:", i);
 				printf("\n%.*s", i, m_UserInput);
 				// We have user input, send over user selected protocol
 				if (!m_NetworkMode) {
 					// Write to COM port.
-					int e = RS232_SendBuf(m_ComPorts.at(m_SelectedPort), reinterpret_cast<unsigned char*>(m_UserInput), i);
+					int e = RS232_SendBuf(m_ComPorts.at(m_SelectedPort) - 1, reinterpret_cast<unsigned char*>(m_UserInput), i+1);
+					//RS232_cputs((m_ComPorts.at(m_SelectedPort) - 1), m_UserInput);
+					
 					if (e < 0) {
-						printf("\nWriting failed! Port: %d", m_ComPorts.at(m_SelectedPort));
+						printf("\nWriting failed! Port: %d", m_ComPorts.at(m_SelectedPort) - 1);
 						printf("\n%.*s", i, m_UserInput);
 					}
-					printf("\nWrote %d bytes on Comport %d", e, m_ComPorts.at(m_SelectedPort));
+					printf("\nWrote %d bytes on Comport %d", e, m_ComPorts.at(m_SelectedPort) - 1);
+					
 				}
 				else {
 					// TODO: Send Text to Server.
@@ -514,7 +536,8 @@ public:
 
 			ImGui::SameLine();
 			if (ImGui::Button("Clear Buffer")) {
-				Out = ""; // This is the "console window" in Text Mode. 
+				Out = ""; // This is the "console window" in Text Mode.
+				memset(m_UserInput, 0, sizeof(m_UserInput)); // IDK why but sometimes i have garbage chars in here. 
 			}
 			ImGui::BeginChild("##Text Box", ImVec2(400, 300), true, ImGuiWindowFlags_NoScrollbar);
 			ImGui::Text(Out.c_str()); 
@@ -526,7 +549,8 @@ public:
 
 	}
 
-
+public:
+	static char* m_UserInput; // Obligatory buffer for user input.
 private:
 
 	std::vector<int> m_ComPorts; // Dynamic array of available COM ports.
@@ -538,7 +562,7 @@ private:
 	std::string ErrorMsg; // For telling the user they probably selected the wrong com port. could be a popup? annoying
 	int m_SelectedPort = 0;
 	unsigned char* buf; // Buffer for incoming data from serial port.
-	static char* m_UserInput; // Obligatory buffer for user input.
+	
 	std::ifstream m_SettingsFile;
 
 };
