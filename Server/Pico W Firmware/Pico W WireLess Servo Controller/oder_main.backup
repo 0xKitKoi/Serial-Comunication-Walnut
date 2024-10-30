@@ -1,0 +1,242 @@
+#include "pico/stdlib.h"
+#include "pico/cyw43_arch.h"
+#include "lwip/init.h"
+#include "lwip/tcp.h"
+#include "hardware/pwm.h"
+#include "hardware/gpio.h"
+
+#define SERVER_IP "192.168.0.###"
+#define SERVER_PORT 5000
+#define WIFI_SSID ""
+#define WIFI_PASSWORD ""
+
+bool gracePeriod = true;
+
+struct tcp_pcb *tcp_client = NULL;
+uint X_SERVO = 16;
+uint Y_SERVO = 17;
+
+// PWM configuration
+uint sliceNum_X, sliceNum_Y;
+
+float calculatePulseWidth(int angle) {
+/*
+def set_servo_angle(servo, angle):
+    min_duty = 1200  # This is 0 degrees?
+    max_duty = 7000  # this seems to me 180 degrees
+    
+    # Calculate duty for desired angle
+    duty = map_value(angle, 0, 180, min_duty, max_duty)
+    print(f"Setting angle to {angle}, duty cycle to {duty}")  # Debug print
+    # Set the duty cycle
+    #servo.duty_u16(int(duty * 65535 / 1023)) // garbage,doesnt work
+    servo.duty_u16(int(duty)) # seems to work correctly
+*/
+
+
+    // Assuming a linear mapping between angle and pulse width
+    float pulseWidthRange = 20000.f;  // Microseconds
+    float pulseWidthMin = 1200.f;     // Microseconds
+    float pulseWidthMax = 7000.f;     // Microseconds
+
+    float dutyCycle = (angle / 180.0) * (pulseWidthMax - pulseWidthMin) / pulseWidthRange;
+    printf("Calculated duty cycle: %f\n", dutyCycle * 39062.f); // what is this magic? 39062.f ??
+    return dutyCycle * 39062.f;
+}
+
+float map(float value, float inMin, float inMax, float outMin, float outMax) {
+    return (value - inMin) * (outMax - outMin) / (inMax - inMin) + outMin;
+}
+
+
+void controlServo(uint servoPin, int angle) {
+    // Map degrees to pulse width (adjust the mapping based on servo specifications)
+    float pulseWidth = map(angle, 0, 180, 600, 2400);
+
+    // Set up PWM on the servo pin
+    gpio_set_function(servoPin, GPIO_FUNC_PWM);
+    //uint slice_num = pwm_gpio_to_slice_num(X_SERVO);
+    uint sliceNum = (servoPin == X_SERVO) ? sliceNum_X : sliceNum_Y;
+
+    pwm_config config = pwm_get_default_config();
+    pwm_config_set_clkdiv(&config, 64.f);
+    pwm_config_set_wrap(&config, 20000.f);  // Assuming a 20 ms period (50 Hz)
+
+    pwm_init(sliceNum, &config, true);
+
+    // Set the PWM level based on the calculated pulse width
+    pwm_set_gpio_level(servoPin, pulseWidth);
+}
+
+
+
+
+/*
+void controlServo(uint servoPin, int angle) {
+    // Assuming servoPin is a valid GPIO pin for PWM
+    gpio_set_function(servoPin, GPIO_FUNC_PWM);
+    uint sliceNum = (servoPin == X_SERVO) ? sliceNum_X : sliceNum_Y;
+
+    pwm_set_gpio_level(servoPin, calculatePulseWidth(angle));
+}
+*/
+
+void close_tcp_client() {
+    if (tcp_client != NULL) {
+        // Close the TCP connection
+        tcp_arg(tcp_client, NULL);
+        tcp_sent(tcp_client, NULL);
+        tcp_recv(tcp_client, NULL);
+        tcp_err(tcp_client, NULL);
+
+        err_t err = tcp_close(tcp_client);
+        if (err != ERR_OK) {
+            // Handle error, if needed
+        }
+
+        tcp_client = NULL;
+    }
+}
+
+err_t tcp_client_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err) {
+    if (tcp_client->state == 0) {
+        // Handle connection closed or error
+        printf("Connection closed or error.\n");
+        close_tcp_client();
+        return ERR_OK;
+    }
+
+    // Print the received data if pbuf and payload are not NULL
+    if (p && p->payload) {
+        printf("Received data from server: %.*s\n", p->tot_len, (char *)p->payload);
+
+        char *tokens = strtok((char *)p->payload, "XY");
+        bool switchServo = true;
+        while (tokens != NULL) {
+            printf("%s\n", tokens);
+            int angle = atoi(tokens);
+
+            if (switchServo) {
+                controlServo(X_SERVO, angle);
+            } else {
+                controlServo(Y_SERVO, angle);
+            }
+
+            switchServo = !switchServo;
+            tokens = strtok(NULL, "XY");
+        }
+    } else {
+        printf("Received data, but pbuf or payload is NULL.\n");
+    }
+
+    // Additional logic can be added here to process the received data if needed
+
+    // Free the pbuf only if it is not NULL
+    if (p) {
+        pbuf_free(p);
+    }
+
+    return ERR_OK;
+}
+
+
+void setupPWM() {
+    // Initialize PWM slices for both X_SERVO and Y_SERVO
+    sliceNum_X = pwm_gpio_to_slice_num(X_SERVO);
+    sliceNum_Y = pwm_gpio_to_slice_num(Y_SERVO);
+
+    pwm_config config = pwm_get_default_config();
+    pwm_config_set_clkdiv(&config, 64.f);
+    pwm_config_set_wrap(&config, 39062.f);
+
+    pwm_init(sliceNum_X, &config, true);
+    pwm_init(sliceNum_Y, &config, true);
+}
+
+void create_and_connect_socket(ip_addr_t *server_ip, u16_t server_port) {
+    close_tcp_client();
+    tcp_client = tcp_new();
+
+    tcp_recv(tcp_client, tcp_client_recv);
+    gracePeriod = !gracePeriod;
+
+    if (tcp_client == NULL) {
+        printf("Failed to create TCP client.\n");
+        return;
+    }
+
+    tcp_connect(tcp_client, server_ip, server_port, tcp_client_recv);
+}
+
+int connect_to_wifi() {
+    printf("Connecting to Wi-Fi...\n");
+
+    int retry_count = 0;
+    while (cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 30000) != 0) {
+        printf("Failed to connect to Wi-Fi. Retrying (%d)...\n", ++retry_count);
+        sleep_ms(2000);
+
+        if (retry_count >= 5) {
+            printf("Max retry count reached. Exiting.\n");
+            return -1;
+        }
+    }
+
+    printf("Connected to Wi-Fi.\n");
+    return 0;
+}
+
+int main() {
+    stdio_init_all();
+    printf("Starting.\n");
+
+    if (cyw43_arch_init()) {
+        printf("Failed to initialize Wi-Fi. Exiting.\n");
+        return 1;
+    }
+
+    cyw43_arch_enable_sta_mode();
+
+    if (connect_to_wifi() != 0) {
+        return -1;
+    }
+
+    // Initialize PWM slices
+    setupPWM();
+
+    ip_addr_t server_ip;
+    IP4_ADDR(&server_ip, 192, 168, 0, 222);
+
+    printf("Attempting to connect to the server.\n");
+    create_and_connect_socket(&server_ip, SERVER_PORT);
+
+    bool led = true;
+    bool connectedFlag = false;
+    while (1) {
+        sys_check_timeouts();
+        if (gracePeriod) {
+            gracePeriod = !gracePeriod;
+            sleep_ms(6000);
+            continue;
+        }
+
+        if (tcp_client && tcp_client->state > 0) {
+            if(!connectedFlag) {
+		printf("Connected to the server. | State: %u\n", tcp_client->state);
+		connectedFlag = !connectedFlag;
+	    }
+            cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, led);
+            led = !led;
+
+            sleep_ms(600);
+        } else {
+		connectedFlag = !connectedFlag;
+            printf("Connection lost or not established. Reconnecting. %u\n", tcp_client ? tcp_client->state : 0);
+            sleep_ms(1000);
+            create_and_connect_socket(&server_ip, SERVER_PORT);
+        }
+    }
+
+    return 0;
+}
+
