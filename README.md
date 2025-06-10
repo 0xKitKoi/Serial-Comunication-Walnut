@@ -1,9 +1,9 @@
 # Walnut App for Microcontroller Communication
 
-This is Client built with [Walnut](https://github.com/TheCherno/Walnut) - This project was intended to make [Michael Reevee's](https://youtu.be/_P24em7Auq0?si=aHVvcCby17MTgddT) Laser Turret Wireless. This Project uses two Raspberry Pi Pico W's to acomplish this. The Client sends commands to one Pico W connected to the computer via USB Serial Ports. That Pico then hosts a GATT Server sending the data received from the Client. Another Pico W would then scan for the GATT Server via Bluetooth and read commands to then parse and control Servo Motors to move the Laser. This setup allows the Laser Turret System to be anywhere in the room, or be controlled remotely anywhere in the world. 
+This is Client built with [Walnut](https://github.com/TheCherno/Walnut) - This project was intended to make [Michael Reevee's](https://youtu.be/_P24em7Auq0?si=aHVvcCby17MTgddT) Laser Turret Wireless. This Project uses two Raspberry Pi Pico W's to acomplish this. This Client, I'll call the TurretController, sends commands to a microcontroller (In my case a pico w) connected to the computer via USB Serial Ports. That Pico then either is the turret directly plugged in, or is a medium to connect to the turret wirelessly using raw sockets, Bluetooth, or NRF24l01 modules. Firmware for all of these will be added. The Turret will connect to the microcontroller attached to your PC to parse commands. This controls Servo Motors to move the Laser, or an LCD Screen. This setup allows the Laser Turret System to be anywhere in the room, or be controlled remotely anywhere in the world. It uses [this library](https://gitlab.com/Teuniz/RS-232) to communicate over serial ports, and is multiplatform. Raw sockets are used for Networking, and all other communications like bluetooth and radio are sent over serial port to a microcontroller to act as the medium.
 
 ## Getting Started
-Once you've cloned, run `scripts/Setup.bat` to generate Visual Studio 2022 solution/project files. The app is located in the `WalnutApp/` directory. 
+Clone with:```git clone --recursive https://github.com/0xKitKoi/Serial-Comunication-Walnut ``` Once you've cloned, run `scripts/Setup.bat` to generate Visual Studio 2022 solution/project files. The app is located in the `WalnutApp/` directory. 
 
 ## How To Use
 By default, the application is set to text mode. this will allow the user to select a COM port for communcation. When you plug a microcontroller like an arduino into your PC, it should be assigned a COM Port. Select the correct one and send it raw data with the text box.
@@ -33,3 +33,6 @@ if (ImGui::IsMouseDragging(0)) {
     /// continued ........
 }
 ```
+
+# Network Mode
+So You'll most likely want to use the turret wirelessly. You have multiple options based on your setup. Wifi is one, Bluetooth is another. Radio seems cooler to me, but all three are implimented in the pico w firmware included here. This is assuming you have a spare microcontroller to act as the dongle/medium. This application uses serial ports to communicate to the microcontroller, it should then parse these commands to send to the turret. If network mode is selected, the application will use WiFi and then tries to host a server for the turret to connect to. You can configure 
