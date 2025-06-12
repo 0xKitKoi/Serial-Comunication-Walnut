@@ -66,13 +66,17 @@ DWORD WINAPI sendThread(LPVOID lpParam) {
 	while (!stopThreads) {
 		std::unique_lock<std::mutex> lock(queueMutex);
 		queueCV.wait(lock, [] { return !messageQueue.empty() || stopThreads; });
-		if (stopThreads) break;
+
+		if (stopThreads)
+			break; // let 'lock' go out of scope and unlock safely
+
 		std::string message = messageQueue.front();
 		messageQueue.pop();
+		// No need to manually unlock; optional, but clean:
 		lock.unlock();
+
 		send(clientSocket, message.c_str(), message.size(), 0);
 		printf("Sent: %s\n", message.c_str());
-		
 	}
 	return 0;
 }
@@ -130,6 +134,7 @@ void OpenSettingsFile() {
 			AttemptConnect(data);
 			file << ipbuf << "\n" << portbuf;
 			file.close();
+			m_SaveData = data; // update global save data
 		}
 	}
 
@@ -172,12 +177,14 @@ public:
 	// microcontroller's fault?
 	ExampleLayer() {
 		buf = new unsigned char[128]; // seperate buffer, this hopefully wont get rewritten to every single frame
-		m_UserInput = new char[128]; // ImGUI::TextBox input. 
+		//m_UserInput = new char[128]; // ImGUI::TextBox input. 
+		m_UserInput = new char[128]();
 		// I can tell my buffer management needs work. TODO: make buffer class!!!
 	}
 	~ExampleLayer() {
 		delete[] buf;
 		delete[] m_UserInput;
+		m_UserInput = nullptr;
 		stopThreads = true;
 
 		// Notify the sending thread to wake up and check the stopThreads flag
@@ -282,36 +289,55 @@ public:
 
 		if (ImGui::Button("Toggle Serial/Network")) {
 			m_NetworkMode = !m_NetworkMode;
+
 			if (m_NetworkMode) {
-				int error_code;
-				int error_code_size = sizeof(error_code);
-
-				getsockopt(ConnectSocket, SOL_SOCKET, SO_ERROR, (char*)&error_code, &error_code_size);
-				if (error_code == SOCKET_ERROR) {
-					printf("Connection Attempt failed: %d\n", error_code);
+				if (connectionAquired) {
+					// Already connected
+					return;
 				}
-				if (!connectionAquired) {
-					if (connect(ConnectSocket, (SOCKADDR*)&clientService, sizeof(clientService)) == SOCKET_ERROR) {
 
-						int error_code = WSAGetLastError();
-						printf("Unable to connect to server.%d\n", error_code);
-						//WSACleanup();
-					}
-					else {
-						send(ConnectSocket, "W", 1, 0);
-
-						//HANDLE hReadThread = CreateThread(NULL, 0, receiveThread, (LPVOID)ConnectSocket, 0, NULL);
-						//HANDLE hSendThread = CreateThread(NULL, 0, sendThread, (LPVOID)ConnectSocket, 0, NULL);
-						std::thread recvThread(&receiveThread, static_cast<void*>(&ConnectSocket));
-						std::thread sendThread(&sendThread, static_cast<void*>(&ConnectSocket));
-						connectionAquired = true;
-					}
+				// Create the socket
+				ConnectSocket = socket(AF_INET, SOCK_STREAM, 0);
+				if (ConnectSocket == INVALID_SOCKET) {
+					printf("Socket creation failed: %d\n", WSAGetLastError());
+					return;
 				}
+
+				clientService.sin_family = AF_INET;
+				clientService.sin_addr.s_addr = inet_addr("192.168.1.100");  // Replace with actual IP
+				clientService.sin_port = htons(12345); // Replace with actual port
+
+				// Attempt to connect
+				if (connect(ConnectSocket, (SOCKADDR*)&clientService, sizeof(clientService)) == SOCKET_ERROR) {
+					int error_code = WSAGetLastError();
+					printf("Unable to connect to server. %d\n", error_code);
+					closesocket(ConnectSocket);
+					ConnectSocket = INVALID_SOCKET;
+					connectionAquired = false;
+				}
+				else {
+					send(ConnectSocket, "W", 1, 0); // initial handshake or ping
+
+					// Launch threads
+					std::thread recvThread(&receiveThread, static_cast<void*>(&ConnectSocket));
+					std::thread sendThread(&sendThread, static_cast<void*>(&ConnectSocket));
+					recvThread.detach();
+					sendThread.detach();
+
+					connectionAquired = true;
+				}
+
 			}
 			else {
-				closesocket(ConnectSocket);
+				// Serial mode selected — clean up socket
+				if (ConnectSocket != INVALID_SOCKET) {
+					closesocket(ConnectSocket);
+					ConnectSocket = INVALID_SOCKET;
+				}
+				connectionAquired = false;
 			}
 		}
+
 
 		ImGui::SameLine();
 		ImGui::PushItemWidth(200);
@@ -410,16 +436,17 @@ public:
 				temp += "Y";
 				temp += std::to_string((int)relativePos.y);
 				temp += "\n";
-				temp += '\0';
+				//temp += '\0'; .c_str() auto null terminates
 
-				unsigned char* charArray = new unsigned char[temp.size()];
-				std::memcpy(charArray, temp.c_str(), temp.size());
+				/*unsigned char* charArray = new unsigned char[temp.size()];
+				std::memcpy(charArray, temp.c_str(), temp.size());*/
+
 				// Send Mouse Position over Serial.
 				if (!m_NetworkMode) {
 					//RS232_SendBuf(m_ComPorts.at(m_SelectedPort) - 1, charArray, temp.size());
 					//RS232_cputs(m_ComPorts.at(m_SelectedPort) - 1, temp.c_str());
 
-					int e = RS232_SendBuf(m_ComPorts.at(m_SelectedPort) - 1, charArray, temp.size());
+					int e = RS232_SendBuf(m_ComPorts.at(m_SelectedPort) - 1, (unsigned char*)temp.c_str(), temp.size());
 					//RS232_cputs((m_ComPorts.at(m_SelectedPort) - 1), m_UserInput);
 
 					if (e < 0) {
@@ -431,7 +458,7 @@ public:
 				else {
 					// Send over Network:
 					std::lock_guard<std::mutex> lock(queueMutex);
-					messageQueue.push(temp.c_str());
+					messageQueue.push(temp);
 				}
 
 				std::this_thread::sleep_for(std::chrono::milliseconds(50)); // Dont Overload the Microcontroller!!!!
@@ -475,7 +502,7 @@ public:
 					message = messageQueue.front();
 					messageQueue.pop();
 				}
-				queueMutex.unlock();
+				//queueMutex.unlock(); //auto released when out of scope.
 				//m_Out = Out;
 				
 
@@ -557,6 +584,8 @@ private:
 	bool m_AboutModalOpen = false;
 	bool m_MouseMode = false; // Toggles Mouse mode.
 	bool m_NetworkMode = false; // Switches between serial and network mode.
+
+
 	std::shared_ptr<Walnut::Image> m_Image; // When playing with Walnut, i had an AI gen'd image of Giygas from Earthbound. This is it.
 	static std::string m_Out; // This is the backgroud buffer that will eventually get written to the forward buffer on screen.
 	std::string ErrorMsg; // For telling the user they probably selected the wrong com port. could be a popup? annoying
@@ -569,7 +598,8 @@ private:
 
 // Shameful Global variables. Unresolved external symbol error happens if I don't have this here. There's probably a better way.
 
-char* ExampleLayer::m_UserInput = nullptr;
+//char* ExampleLayer::m_UserInput = new char[128](); //nullptr;
+char* ExampleLayer::m_UserInput = new char[128]();
 std::string ExampleLayer::m_Out; // Cherno would smite me for this.
 //int globalport; // m_SelectedPort isnt accessible when file->close is called. Cherno's gonna hit me over the head with a chair for this
 
@@ -579,6 +609,8 @@ Walnut::Application* Walnut::CreateApplication(int argc, char** argv)
 {
 	Walnut::ApplicationSpecification spec;
 	spec.Name = "Serial Comunication Walnut App";
+	spec.Height = 600;
+	spec.Width = 600;
 
 	Walnut::Application* app = new Walnut::Application(spec);
 	app->PushLayer<ExampleLayer>();
