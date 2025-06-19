@@ -3,12 +3,12 @@
 
 #include "Walnut/Image.h"
 #include <thread>
-#include "rs232.h" // Cross platform wrapper for USB Serial Com. https://github.com/Marzac/rs232
+#include "rs232.h" // Cross platform wrapper for USB Serial Com. https://gitlab.com/Teuniz/RS-232.git
 
 #include <stdio.h>
 #pragma comment(lib, "Ws2_32.lib")
 
-#include <thread>
+
 #include <mutex>
 #include <condition_variable>
 #include <queue>
@@ -30,13 +30,14 @@ SOCKET ConnectSocket; // Global socket shared amongst send and recv threads. I k
 sockaddr_in clientService;
 char ipbuf[20] = { 0 };
 char portbuf[6] = { 0 };
+char baudbuf[10] = { 0 }; // Buffer for baudrate input
 bool connectionAquired = false;
 
 
 struct SaveData { // Default settings. Change to microcontroller IP:PORT
 	std::string ipAddress = "127.0.0.1";
 	int port = 5000;
-
+	int baudrate = 9600; // Default baudrate for serial communication
 }m_SaveData;
 
 
@@ -124,6 +125,7 @@ void OpenSettingsFile() {
 	ImGui::Text("EDIT Settings:");
 	ImGui::InputText("##Textbox1", ipbuf, sizeof(ipbuf));
 	ImGui::InputText("##Textbox2:", portbuf, sizeof(portbuf));
+	ImGui::InputText("##Textbox3:", baudbuf, sizeof(baudbuf));
 	if (ImGui::Button("Save")) {
 		// Save buffer contents to file
 		std::ofstream file(filePath);
@@ -132,7 +134,7 @@ void OpenSettingsFile() {
 			data.ipAddress = std::string(ipbuf);
 			data.port = atoi(portbuf);
 			AttemptConnect(data);
-			file << ipbuf << "\n" << portbuf;
+			file << ipbuf << "\n" << portbuf << "\n" << baudbuf;
 			file.close();
 			m_SaveData = data; // update global save data
 		}
@@ -219,6 +221,9 @@ public:
 				else if (i == 0) {
 					m_SaveData.ipAddress = line;
 				}
+				else if (i == 2) {
+					m_SaveData.baudrate = std::stoi(line);
+				}
 			}
 			m_SettingsFile.close();
 		}
@@ -228,6 +233,7 @@ public:
 			if (file.is_open()) {
 				file << m_SaveData.ipAddress << std::endl;
 				file << m_SaveData.port << std::endl;
+				file << m_SaveData.baudrate << std::endl;
 				file.close();
 			}
 		}
@@ -304,8 +310,10 @@ public:
 				}
 
 				clientService.sin_family = AF_INET;
-				clientService.sin_addr.s_addr = inet_addr("192.168.1.100");  // Replace with actual IP
-				clientService.sin_port = htons(12345); // Replace with actual port
+				//clientService.sin_addr.s_addr = inet_addr("192.168.1.100");  // Replace with actual IP
+				//clientService.sin_port = htons(12345); // Replace with actual port
+				clientService.sin_addr.s_addr = inet_addr(m_SaveData.ipAddress.c_str());  // Replace with actual IP
+				clientService.sin_port = htons(m_SaveData.port); // Replace with actual port
 
 				// Attempt to connect
 				if (connect(ConnectSocket, (SOCKADDR*)&clientService, sizeof(clientService)) == SOCKET_ERROR) {
@@ -358,12 +366,13 @@ public:
 						// Attempt to connect to Selected Serial Port.
 						char mode[] = { '8','N','1',0 }; // Serial port config. this sets bit mode & parity. 
 
-						if (RS232_OpenComport(m_ComPorts.at(m_SelectedPort) -1 , 115200, mode, 0)) // (ComPort, Baudrate, mode, flowcontrol)
+						//if (RS232_OpenComport(m_ComPorts.at(m_SelectedPort) -1 , 115200, mode, 0)) // (ComPort, Baudrate, mode, flowcontrol)
+						if (RS232_OpenComport(m_ComPorts.at(m_SelectedPort) - 1, m_SaveData.baudrate, mode, 0)) // (ComPort, Baudrate, mode, flowcontrol)
 						{
 							//printf("Can not open comport COM%i\n", m_ComPorts.at(m_SelectedPort));
 							ErrorMsg = "Can not open comport COM" + std::to_string(m_ComPorts.at(m_SelectedPort) - 1);
 						}
-						printf("Connected to com port: %d", m_ComPorts.at(m_SelectedPort) - 1);
+						printf("Connected to com port: %d", m_ComPorts.at(m_SelectedPort) /* - 1*/);
 					}
 					if (isSelected) {
 						ImGui::SetItemDefaultFocus();
@@ -450,10 +459,10 @@ public:
 					//RS232_cputs((m_ComPorts.at(m_SelectedPort) - 1), m_UserInput);
 
 					if (e < 0) {
-						printf("\nWriting failed! Port: %d", m_ComPorts.at(m_SelectedPort) - 1);
+						printf("\nWriting failed! Port: %d", m_ComPorts.at(m_SelectedPort) /* - 1*/);
 						printf("\n%.*s", temp.size(), m_UserInput);
 					}
-					printf("\nWrote %d bytes (%s) on Comport %d", e , temp, m_ComPorts.at(m_SelectedPort) - 1);
+					printf("\nWrote %d bytes (%s) on Comport %d", e , temp, m_ComPorts.at(m_SelectedPort)/* - 1*/);
 				}
 				else {
 					// Send over Network:
@@ -516,39 +525,61 @@ public:
 			else {
 				ImGui::SameLine();
 				ImGui::Text("Serial Mode!");
+				
 			}
+			std::string porttext = "Selected Port: COM" + std::to_string(m_ComPorts.at(m_SelectedPort));
+			ImGui::Text(porttext.c_str());
+
+
 			ImGui::Text("Input:");
 			//ImGui::InputText("##Text", m_UserInput, IM_ARRAYSIZE(m_UserInput));
 			ImGui::InputText("##Text", m_UserInput, 128); // Set limit for buffer debug purposes
 			//printf("\n%.*s", 128, m_UserInput);
 			ImGui::SameLine();
+			int i = 0;
+			char sendBuffer[130]; // 128 + \n + \0
 			if (ImGui::Button("Send")) {
-				int i;
-				for (i = 0; i < 128; i++) {
-					if (m_UserInput[i] == '\0') { // find index of end of null terminated string
-						printf("\nFound \\0 at end, %d", i);
-						break;
-					}
-					if (m_UserInput[i] == '\n') {
-						printf("\nFound \\n at end, %d", i);
-						break;
-					}
+				int len = strlen(m_UserInput); // safer than looping
+				char sendBuffer[130]; // 128 + \n + \0
+				memcpy(sendBuffer, m_UserInput, len);
+				sendBuffer[len] = '\n';  // newline to trigger Arduino parsing
+				sendBuffer[len + 1] = '\0';
+				
+
+
+				//int i;
+				//for (i = 0; i < 128; i++) {
+				//	if (m_UserInput[i] == '\0') { // find index of end of null terminated string
+				//		printf("\nFound \\0 at end, %d", i);
+				//		break;
+				//	}
+				//	if (m_UserInput[i] == '\n') {
+				//		printf("\nFound \\n at end, %d", i);
+				//		break;
+				//	}
+				//}
+				/*m_UserInput[i] = '\n';
+				m_UserInput[i + 1] = '\0';*/
+				printf("\n%d byte DUMP:", len+1);
+				printf("\n%.*s", len+1, sendBuffer);
+				printf("\n%d byte DUMP (HEX):", len + 1);
+				for (int j = 0; j < len + 1; j++) {
+					printf(" %02X", (unsigned char)sendBuffer[j]);
 				}
-				m_UserInput[i] = '\n';
-				m_UserInput[i + 1] = '\0';
-				printf("\n%d byte DUMP:", i);
-				printf("\n%.*s", i, m_UserInput);
+				printf("\n");
+
 				// We have user input, send over user selected protocol
 				if (!m_NetworkMode) {
 					// Write to COM port.
-					int e = RS232_SendBuf(m_ComPorts.at(m_SelectedPort) - 1, reinterpret_cast<unsigned char*>(m_UserInput), i+1);
+					//int e = RS232_SendBuf(m_ComPorts.at(m_SelectedPort) - 1, reinterpret_cast<unsigned char*>(m_UserInput), i+1);
+					int result = RS232_SendBuf(m_ComPorts.at(m_SelectedPort)-1, reinterpret_cast<unsigned char*>(sendBuffer), len + 1);
 					//RS232_cputs((m_ComPorts.at(m_SelectedPort) - 1), m_UserInput);
 					
-					if (e < 0) {
-						printf("\nWriting failed! Port: %d", m_ComPorts.at(m_SelectedPort) - 1);
-						printf("\n%.*s", i, m_UserInput);
+					if (result < 0) {
+						printf("\nWriting failed! Port: %d", m_ComPorts.at(m_SelectedPort) /* - 1*/);
+						printf("\n%.*s", len, sendBuffer);
 					}
-					printf("\nWrote %d bytes on Comport %d", e, m_ComPorts.at(m_SelectedPort) - 1);
+					printf("\nWrote %d bytes on Comport %d", result, m_ComPorts.at(m_SelectedPort)/* - 1*/);
 					
 				}
 				else {
@@ -559,6 +590,9 @@ public:
 
 				}
 				memset(m_UserInput, 0, sizeof(m_UserInput)); // clear the user input buffer after sending.
+
+				Out += "\n[+] Sent: ";
+				Out += sendBuffer; // This is the "console window" in Text Mode.
 			}
 
 			ImGui::SameLine();

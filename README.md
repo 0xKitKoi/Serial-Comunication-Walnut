@@ -28,7 +28,6 @@ if (ImGui::IsMouseDragging(0)) {
 				temp += "Y";
 				temp += std::to_string((int)relativePos.y);
 				temp += "\n";
-				temp += '\0';
 
     /// continued ........
 }
