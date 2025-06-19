@@ -2,9 +2,14 @@
 
 This is Client built with [Walnut](https://github.com/TheCherno/Walnut) - This project was intended to make [Michael Reevee's](https://youtu.be/_P24em7Auq0?si=aHVvcCby17MTgddT) Laser Turret Wireless. This Project uses two Raspberry Pi Pico W's to acomplish this. This Client, I'll call the TurretController, sends commands to a microcontroller (In my case a pico w) connected to the computer via USB Serial Ports. That Pico then either is the turret directly plugged in, or is a medium to connect to the turret wirelessly using raw sockets, Bluetooth, or NRF24l01 modules. Firmware for all of these will be added. The Turret will connect to the microcontroller attached to your PC to parse commands. This controls Servo Motors to move the Laser, or an LCD Screen. This setup allows the Laser Turret System to be anywhere in the room, or be controlled remotely anywhere in the world. It uses [this library](https://gitlab.com/Teuniz/RS-232) to communicate over serial ports, and is multiplatform. Raw sockets are used for Networking, and all other communications like bluetooth and radio are sent over serial port to a microcontroller to act as the medium.
 
+## Screenshots
+![Main Page](https://github.com/0xKitKoi/Serial-Comunication-Walnut/blob/master/EXAMPLES/Images/Screenshot.png)
+![database](https://github.com/0xKitKoi/Serial-Comunication-Walnut/blob/master/EXAMPLES/Images/Demo.gif)
+
+
+
 ## Getting Started
 Clone with:```git clone --recursive https://github.com/0xKitKoi/Serial-Comunication-Walnut ``` Once you've cloned, run `scripts/Setup.bat` to generate Visual Studio 2022 solution/project files. The app is located in the `WalnutApp/` directory. 
-
 
 ## EXAMPLES / MICROCONTROLLERS
 I've included the firmware I used for the Laser Turret in the MicroController Firmware folder, which you will find in EXAMPLES. Examples include Driving the servo motors for the laser turret, and displaying text/animations. This project revolves around the Desktop Application communicating with a microcontroller, but a simple WiFi Echo Server written in C is also included if you wanted to play around. SEE EXAMPLES FOLDER
