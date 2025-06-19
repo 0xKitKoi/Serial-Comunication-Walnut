@@ -5,6 +5,11 @@ This is Client built with [Walnut](https://github.com/TheCherno/Walnut) - This p
 ## Getting Started
 Clone with:```git clone --recursive https://github.com/0xKitKoi/Serial-Comunication-Walnut ``` Once you've cloned, run `scripts/Setup.bat` to generate Visual Studio 2022 solution/project files. The app is located in the `WalnutApp/` directory. 
 
+
+## EXAMPLES / MICROCONTROLLERS
+I've included the firmware I used for the Laser Turret in the MicroController Firmware folder, which you will find in EXAMPLES. Examples include Driving the servo motors for the laser turret, and displaying text/animations. This project revolves around the Desktop Application communicating with a microcontroller, but a simple WiFi Echo Server written in C is also included if you wanted to play around. SEE EXAMPLES FOLDER
+
+
 ## How To Use
 By default, the application is set to text mode. this will allow the user to select a COM port for communcation. When you plug a microcontroller like an arduino into your PC, it should be assigned a COM Port. Select the correct one and send it raw data with the text box.
 You can also send data to a microcontroller over WiFi. In the settings there is an IP and PORT text box. This is assuming the microcontroller is set up to be the server, and the client will attempt to connect and send data. 

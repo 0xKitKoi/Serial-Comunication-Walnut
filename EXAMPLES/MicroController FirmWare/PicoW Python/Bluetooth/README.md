@@ -1,4 +1,10 @@
-This is an attempt to make Michael Reevee's laser turret wireless. 
+This is an attempt to make Michael Reevee's laser turret wireless.
+
+
+ THIS ONE IS BLUETOOTH
+
+
+
 This setup uses two Pico W's. One is connected to my computer and takes input.
 The Second Pico W controls the turret, lets say that circuit is across the room.
 

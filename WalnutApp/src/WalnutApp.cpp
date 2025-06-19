@@ -151,15 +151,17 @@ void OpenSettingsFile() {
 
 
 void OpenAbout() {
-	ImGui::SetNextWindowSize(ImVec2(1000, 1000), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(400, 400), ImGuiCond_FirstUseEver);
 	ImGui::OpenPopup("Popup Window");
 	
 	if (ImGui::BeginPopupModal("Popup Window", &showPopup, /*ImGuiWindowFlags_NoResize |*/ ImGuiWindowFlags_NoTitleBar)) {
 		ImGui::Text("This Program is intended to Send (and recieve) data to a Microcontroller \nVia raw WiFi sockets or through USB Serial Port.");
 		ImGui::Text("Toggle Between Network Mode and Serial Mode.");
 		ImGui::Text("Network Mode would send data to a IP:PORT set in the settings.");
-		ImGui::Text("Serial Mode would send data to serial ports selected in the dropdown menu.");
+		ImGui::Text("Serial Mode would send data to serial ports selected in the dropdown menu. The BaudRate is set in the Settings. ( Edit->Settings )");
 		ImGui::Text("Mouse Mode sends X and Y coordinates\n Buffer looks like: '\\X(int)Y(int)' for the microcontroller to parse.");
+		ImGui::Text("PLEASE SEE MICROCONTROLLER FIRMWARE FOR EXAMPLES.");
+		ImGui::Text("IF YOU ARE TESTING THIS, SEE EXAMPLES FOLDER FOR THE DEMO.");
 		}
 	ImGui::NewLine();
 	if (ImGui::Button("Close")) {
