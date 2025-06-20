@@ -4,8 +4,7 @@ This is Client built with [Walnut](https://github.com/TheCherno/Walnut) - This p
 
 ## Screenshots
 ![Main Page](https://github.com/0xKitKoi/Serial-Comunication-Walnut/blob/master/EXAMPLES/Images/Screenshot.png)
-![database](https://github.com/0xKitKoi/Serial-Comunication-Walnut/blob/master/EXAMPLES/Images/Demo.gif)
-
+<img src="https://github.com/0xKitKoi/Serial-Comunication-Walnut/blob/master/EXAMPLES/Images/Demo.gif" width="400" height="500"/>
 
 
 ## Getting Started
