@@ -2,6 +2,7 @@
 #include "Walnut/EntryPoint.h"
 
 #include "Walnut/Image.h"
+
 #include <thread>
 #include "rs232.h" // Cross platform wrapper for USB Serial Com. https://gitlab.com/Teuniz/RS-232.git
 
@@ -14,6 +15,8 @@
 #include <queue>
 #include <fstream>
 #include <sstream>
+
+#include "scuzzyimage.h"
 
 
 
@@ -247,7 +250,45 @@ public:
 		clientService.sin_port = htons(m_SaveData.port);
 
 
-		m_Image = std::make_shared<Walnut::Image>("Scuzzy.png");
+		//m_Image = std::make_shared<Walnut::Image>("Scuzzy.png");
+		//m_Image = std::make_shared<Walnut::Image>(
+		//	630, 630,
+		//	Walnut::ImageFormat::RGBA, &Scuzzy_png);
+
+
+		m_Image = std::make_shared<Walnut::Image>(
+			Scuzzy_png_width,
+			Scuzzy_png_height,
+			Walnut::ImageFormat::RGBA,
+			Scuzzy_png);
+
+
+		//m_Image = std::make_shared < Walnut::Image >(630, 630, Walnut::ImageFormat::None, Scuzzy_png); // Create a shared pointer to an image object
+		//m_Image->SetData(Scuzzy_png); // Set the image data from the embedded PNG
+		//int width, height, channels;
+		//unsigned char* pixels = stbi_load_from_memory(
+		//	Scuzzy_png, Scuzzy_png_len,
+		//	&width, &height, &channels,
+		//	4 // force RGBA
+		//);
+
+		//m_Image = std::make_shared<Walnut::Image>(
+		//	width, height, Walnut::ImageFormat::RGBA, pixels
+		//);
+
+		//stbi_image_free(pixels);
+
+
+
+
+
+
+
+
+
+
+
+
 
 		// Scan for COM ports on Initialization.
 		wchar_t lpTargetPath[5000];
