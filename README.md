@@ -28,16 +28,16 @@ the backslash helps the microcontroller parse. X and Y are also parsed out, and 
 
 ```C++
 if (ImGui::IsMouseDragging(0)) {
-				//printf("Holding mouse button down.\n");
-				// Michael's arduino parses this to control two servo motors for Pan And Yaw. Yee Haw.
-				//char coords[10];
-				std::string temp;
-				temp += "\\"; // this is a custom command format, the microcontroller will parse this for the ints.
-				temp += "X";
-				temp += std::to_string((int)relativePos.x);
-				temp += "Y";
-				temp += std::to_string((int)relativePos.y);
-				temp += "\n";
+    //printf("Holding mouse button down.\n");
+    // Michael's arduino parses this to control two servo motors for Pan And Yaw. Yee Haw.
+    //char coords[10];
+    std::string temp;
+    temp += "\\"; // this is a custom command format, the microcontroller will parse this for the ints.
+    temp += "X";
+    temp += std::to_string((int)relativePos.x);
+    temp += "Y";
+    temp += std::to_string((int)relativePos.y);
+    temp += "\n";
 
     /// continued ........
 }
