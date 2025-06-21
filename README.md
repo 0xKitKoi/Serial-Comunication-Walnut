@@ -1,11 +1,11 @@
-# Walnut App for Microcontroller Communication
+# Serial Monitor with Networking Capabilities
 
-This is Client built with [Walnut](https://github.com/TheCherno/Walnut) - This project was intended to make [Michael Reevee's](https://youtu.be/_P24em7Auq0?si=aHVvcCby17MTgddT) Laser Turret Wireless. This Project uses two Raspberry Pi Pico W's to acomplish this. This Client, I'll call the TurretController, sends commands to a microcontroller (In my case a pico w) connected to the computer via USB Serial Ports. That Pico then either is the turret directly plugged in, or is a medium to connect to the turret wirelessly using raw sockets, Bluetooth, or NRF24l01 modules. Firmware for all of these will be added. The Turret will connect to the microcontroller attached to your PC to parse commands. This controls Servo Motors to move the Laser, or an LCD Screen. This setup allows the Laser Turret System to be anywhere in the room, or be controlled remotely anywhere in the world. It uses [this library](https://gitlab.com/Teuniz/RS-232) to communicate over serial ports, and is multiplatform. Raw sockets are used for Networking, and all other communications like bluetooth and radio are sent over serial port to a microcontroller to act as the medium.
+This is Client built with [Walnut](https://github.com/TheCherno/Walnut) - It's a serial monitor at heart, but mixed with NetCat and can also send mouse coordinates.
+This project was intended to make [Michael Reevee's](https://youtu.be/_P24em7Auq0?si=aHVvcCby17MTgddT) Laser Turret Wireless. This Project uses two Raspberry Pi Pico W's to acomplish this. This Client, I'll call the TurretController, sends commands to a microcontroller (In my case a pico w) connected to the computer via USB Serial Ports. That Pico then either is the turret directly plugged in, or is a medium to connect to the turret wirelessly using raw sockets, Bluetooth, or NRF24l01 modules. Firmware for all of these are in the Examples folder. The Turret will connect to the microcontroller attached to your PC to parse commands. The turret controls Servo Motors to move the Laser, or an LCD/OLED Screen. This setup allows the Laser Turret System to be anywhere in the room, or be controlled remotely anywhere in the world. It uses [this library](https://gitlab.com/Teuniz/RS-232) to communicate over serial ports, and is multiplatform. Raw sockets are used for Networking, and all other communications like bluetooth and radio are sent over serial port to a microcontroller to act as the medium. (This will take nrf24 modules or the like)
 
 ## Screenshots
 ![Main Page](https://github.com/0xKitKoi/Serial-Comunication-Walnut/blob/master/EXAMPLES/Images/Screenshot.png)
-![database](https://github.com/0xKitKoi/Serial-Comunication-Walnut/blob/master/EXAMPLES/Images/Demo.gif)
-
+<img src="https://github.com/0xKitKoi/Serial-Comunication-Walnut/blob/master/EXAMPLES/Images/Demo.gif" width="400" height="500"/>
 
 
 ## Getting Started
@@ -28,16 +28,16 @@ the backslash helps the microcontroller parse. X and Y are also parsed out, and 
 
 ```C++
 if (ImGui::IsMouseDragging(0)) {
-				//printf("Holding mouse button down.\n");
-				// Michael's arduino parses this to control two servo motors for Pan And Yaw. Yee Haw.
-				//char coords[10];
-				std::string temp;
-				temp += "\\"; // this is a custom command format, the microcontroller will parse this for the ints.
-				temp += "X";
-				temp += std::to_string((int)relativePos.x);
-				temp += "Y";
-				temp += std::to_string((int)relativePos.y);
-				temp += "\n";
+    //printf("Holding mouse button down.\n");
+    // Michael's arduino parses this to control two servo motors for Pan And Yaw. Yee Haw.
+    //char coords[10];
+    std::string temp;
+    temp += "\\"; // this is a custom command format, the microcontroller will parse this for the ints.
+    temp += "X";
+    temp += std::to_string((int)relativePos.x);
+    temp += "Y";
+    temp += std::to_string((int)relativePos.y);
+    temp += "\n";
 
     /// continued ........
 }
