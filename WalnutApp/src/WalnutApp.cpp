@@ -698,8 +698,8 @@ private:
 // Shameful Global variables. Unresolved external symbol error happens if I don't have this here. There's probably a better way
 
 //char* ExampleLayer::m_UserInput = new char[128](); //nullptr;
-//char* ExampleLayer::m_UserInput = new char[128]();
-//std::string ExampleLayer::m_Out; // Cherno would smite me for this.
+char* ExampleLayer::m_UserInput = new char[128]();
+std::string ExampleLayer::m_Out; // Cherno would smite me for this.
 //int globalport; // m_SelectedPort isnt accessible when file->close is called. Cherno's gonna hit me over the head with a chair for this
 
 
