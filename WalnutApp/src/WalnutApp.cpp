@@ -1,6 +1,6 @@
 #include "Walnut/Application.h"
 #include "Walnut/EntryPoint.h"
-
+#include <imgui_internal.h>
 #include "Walnut/Image.h"
 
 #include <thread>
@@ -17,28 +17,37 @@
 #include <sstream>
 
 #include "scuzzyimage.h" // Embedded Image for mouse mode. User holds left click on this to send mouse coords to the laser turret
-#include <imgui_internal.h>
+
 
 
 
 // Global variables
+ImGuiTextBuffer console; // Continuous log buffer, append only.
+// // append
+// console.appendf("[+] {%s} %s\n", timestamp(), text);
+
 std::queue<std::string> messageQueue; // Shared buffer for messages
 std::mutex queueMutex; // Mutex to protect the shared buffer
 std::condition_variable queueCV; // Condition variable for signaling
-int globalport; // m_SelectedPort isnt accessible when file->close is called. Cherno's gonna hit me over the head with a chair for this
-bool stopThreads = false; // Flag to signal threads to stop
-bool showPopup = false;
 std::string Out; // dump buffer received from server to user in textbox.
-bool OpenSettings = false;
+
+int globalport; // m_SelectedPort isnt accessible when file->close is called. Cherno's gonna hit me over the head with a chair for this
 SOCKET ConnectSocket; // Global socket shared amongst send and recv threads. I know, its horrible :(
 sockaddr_in clientService;
 char ipbuf[20] = { 0 };
 char portbuf[6] = { 0 };
 char baudbuf[10] = { 0 }; // Buffer for baudrate input
+// Application state flags
 bool connectionAquired = false;
+bool stopThreads = false; // Flag to signal networking threads to stop
+bool showPopup = false; // about window.
+bool OpenSettings = false;
 
 
-struct SaveData { // Default settings. Change to microcontroller IP:PORT
+
+
+
+struct SaveData { // Default settings. Change to Microcontroller/Server IP:PORT
 	std::string ipAddress = "127.0.0.1";
 	int port = 5000;
 	int baudrate = 9600; // Default baudrate for serial communication
@@ -63,6 +72,7 @@ DWORD WINAPI receiveThread(LPVOID lpParam) {
 			break;
 		}
 	}
+	free(buffer);
 	return 0;
 }
 
@@ -81,7 +91,9 @@ DWORD WINAPI sendThread(LPVOID lpParam) {
 		lock.unlock();
 
 		send(clientSocket, message.c_str(), static_cast<int>(message.length()), 0);
+
 		printf("Sent: %s\n", message.c_str());
+		console.appendf("[+] %s\n", message);
 	}
 	return 0;
 }
@@ -138,7 +150,7 @@ void OpenSettingsFile() {
 			data.ipAddress = std::string(ipbuf);
 			data.port = atoi(portbuf);
 			AttemptConnect(data);
-			file << ipbuf << "\n" << portbuf << "\n" << baudbuf;
+			file << ipbuf << "\n" << portbuf << "\n" << baudbuf << "\n";
 			file.close();
 			m_SaveData = data; // update global save data
 		}
@@ -162,7 +174,7 @@ void OpenAbout() {
 		ImGui::Text("This Program is intended to Send (and recieve) data to a Microcontroller \nVia raw WiFi sockets or through USB Serial Port.");
 		ImGui::Text("Toggle Between Network Mode and Serial Mode.");
 		ImGui::Text("Network Mode would send data to a IP:PORT set in the settings.");
-		ImGui::Text("Serial Mode would send data to serial ports selected in the dropdown menu. The BaudRate is set in the Settings. ( Edit->Settings )");
+		ImGui::Text("Serial Mode would send data to serial ports selected in the dropdown menu. \n The BaudRate is set in the Settings. ( Edit->Settings )");
 		ImGui::Text("Mouse Mode sends X and Y coordinates\n Buffer looks like: '\\X(int)Y(int)' for the microcontroller to parse.");
 		ImGui::Text("PLEASE SEE MICROCONTROLLER FIRMWARE FOR EXAMPLES.");
 		ImGui::Text("IF YOU ARE TESTING THIS, SEE EXAMPLES FOLDER FOR THE DEMO.");
@@ -188,6 +200,7 @@ public:
 		//m_UserInput = new char[128]; // ImGUI::TextBox input. 
 		m_UserInput = new char[128]();
 		// I can tell my buffer management needs work. TODO: make buffer class!!!
+		console.appendf("[+] Application Started. ");
 	}
 	~ExampleLayer() {
 		delete[] buf;
@@ -204,6 +217,7 @@ public:
 
 		WSACleanup();
 		printf("Done.");
+		console.appendf("[+] Application Closed. Destructor Finished. ");
 	}
 
 
@@ -840,6 +854,19 @@ void DrawRetroMousePad()
 					isOpen = false;
 					selectionChanged = true;
 					// your connect logic here
+					char mode[] = { '8','N','1',0 }; // Serial port config. this sets bit mode & parity, and I don't thin this EVER chnages. 
+
+					if (RS232_OpenComport(m_ComPorts.at(m_SelectedPort) - 1, m_SaveData.baudrate, mode, 0)) // (ComPort, Baudrate, mode, flowcontrol)
+					{
+						//printf("Can not open comport COM%i\n", m_ComPorts.at(m_SelectedPort));
+						ErrorMsg = "Can not open comport COM" + std::to_string(m_ComPorts.at(m_SelectedPort) - 1);
+						console.appendf("[-] Error: %s\n", ErrorMsg.c_str());
+					}
+					printf("Connected to com port: %d", m_ComPorts.at(m_SelectedPort));
+					console.appendf("[+] Connected to com port: COM%d\n", m_ComPorts.at(m_SelectedPort));
+
+
+
 				}
 
 				ImGui::PopStyleColor();
@@ -1060,14 +1087,70 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 		if (showPopup) OpenAbout();
 
 		// Network / Serial Toggle
-		ImGui::Text("Mode: ");
+		ImGui::Text("Sending All Data over Mode: ");
 		ImGui::SameLine();
-		ImGui::Text(m_NetworkMode ? "Network" : "Serial");
+		ImGui::Text(m_NetworkMode ? "Network ( Server IP:PORT in Settings )" : "Serial ( COM Port Selected in DropDown Menu )");
 
 		ImGui::SameLine();
 		if (ImGui::Button("Toggle Serial/Network")) {
 			m_NetworkMode = !m_NetworkMode;
 			// (reconnection logic here unchanged)
+			//std::string modeStr = m_NetworkMode ? "Network" : "Serial";
+			console.appendf("[+] Application Mode Switched: [%s]\n", m_NetworkMode ? "Network" : "Serial");
+
+			if (m_NetworkMode) {
+				if (connectionAquired) {
+					// Already connected, dont try to reconnect
+					//console.appendf();
+					return;
+				}
+
+				// Create the socket
+				ConnectSocket = socket(AF_INET, SOCK_STREAM, 0);
+				if (ConnectSocket == INVALID_SOCKET) {
+					printf("Socket creation failed: %d\n", WSAGetLastError());
+					console.appendf("[-] Socket Creation Failed! [%d]\n", WSAGetLastError());
+					return;
+				}
+
+				clientService.sin_family = AF_INET;
+				//clientService.sin_addr.s_addr = inet_addr("192.168.1.100");  // Replace with actual IP
+				//clientService.sin_port = htons(12345); // Replace with actual port
+				clientService.sin_addr.s_addr = inet_addr(m_SaveData.ipAddress.c_str());  // Replace with actual IP
+				clientService.sin_port = htons(m_SaveData.port); // Replace with actual port
+
+				// Attempt to connect
+				if (connect(ConnectSocket, (SOCKADDR*)&clientService, sizeof(clientService)) == SOCKET_ERROR) {
+					int error_code = WSAGetLastError();
+					printf("Unable to connect to server. %d\n", error_code);
+					console.appendf("[-] Unable to connect to server! [%d]\n", error_code);
+					closesocket(ConnectSocket);
+					ConnectSocket = INVALID_SOCKET;
+					connectionAquired = false;
+				}
+				else {
+					send(ConnectSocket, "W", 1, 0); // initial handshake or ping
+
+					// Launch threads
+					std::thread recvThread(&receiveThread, static_cast<void*>(&ConnectSocket));
+					std::thread sendThread(&sendThread, static_cast<void*>(&ConnectSocket));
+					recvThread.detach();
+					sendThread.detach();
+
+					connectionAquired = true;
+				}
+
+			}
+			else {
+				// Serial mode selected ? clean up socket
+				if (ConnectSocket != INVALID_SOCKET) {
+					closesocket(ConnectSocket);
+					ConnectSocket = INVALID_SOCKET;
+				}
+				connectionAquired = false;
+				isNetworkConnected = false;
+			}
+
 		}
 
 
@@ -1198,6 +1281,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 					if (::GetLastError() == ERROR_INSUFFICIENT_BUFFER)
 					{
 						printf("ERROR: %d\n", ::GetLastError());
+						console.appendf("[-] ERROR Scanning COM Ports: [%d]\n", ::GetLastError());
 						ErrorMsg = "ERROR: " + std::to_string(::GetLastError());
 					}
 
@@ -1206,6 +1290,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 				// Selection changed!
 				int selectedPort = m_ComPorts[m_SelectedPort];
 				printf("Selected COM Port: %d\n", selectedPort);
+				console.appendf("[+] Selected COM Port: %d\n", selectedPort);
 				// Attempt to connect to Selected Serial Port.
 				char mode[] = { '8','N','1',0 }; // Serial port config. this sets bit mode & parity. 
 
@@ -1214,8 +1299,10 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 				{
 					//printf("Can not open comport COM%i\n", m_ComPorts.at(m_SelectedPort));
 					ErrorMsg = "Can not open comport COM" + std::to_string(m_ComPorts.at(m_SelectedPort) - 1);
+					console.appendf("[-] Cannot open comport COM%i\n", m_ComPorts.at(m_SelectedPort) - 1);
 				}
 				printf("Connected to com port: %d", m_ComPorts.at(m_SelectedPort));
+				console.appendf("[+] Connected to com port: %d\n", m_ComPorts.at(m_SelectedPort)-1);
 
 			}
 			ImGui::EndChild();
@@ -1310,16 +1397,92 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 			ImGui::Text("Serial / Network Terminal");
 			ImGui::InputText("##Text", m_UserInput, 128);
 			ImGui::SameLine();
+			//if (ImGui::Button("Send")) {
+			//	// send logic unchanged
+			//}
+
+
 			if (ImGui::Button("Send")) {
-				// send logic unchanged
+				int len = strlen(m_UserInput); // safer than looping
+				char sendBuffer[130]; // 128 + \n + \0
+				memcpy(sendBuffer, m_UserInput, len);
+				sendBuffer[len] = '\n';  // newline to trigger Arduino parsing
+				sendBuffer[len + 1] = '\0';
+
+
+
+				//int i;
+				//for (i = 0; i < 128; i++) {
+				//	if (m_UserInput[i] == '\0') { // find index of end of null terminated string
+				//		printf("\nFound \\0 at end, %d", i);
+				//		break;
+				//	}
+				//	if (m_UserInput[i] == '\n') {
+				//		printf("\nFound \\n at end, %d", i);
+				//		break;
+				//	}
+				//}
+				//m_UserInput[i] = '\n';
+				//m_UserInput[i + 1] = '\0';
+				printf("\n%d byte DUMP:", len + 1);
+				console.appendf("\n%d byte DUMP:", len + 1);
+				printf("\n%.*s", len + 1, sendBuffer);
+				console.appendf("\n%.*s", len + 1, sendBuffer);
+				printf("\n%d byte DUMP (HEX):", len + 1);
+				console.appendf("\n%d byte DUMP (HEX):", len + 1);
+				for (int j = 0; j < len + 1; j++) {
+					printf(" %02X", (unsigned char)sendBuffer[j]);
+					console.appendf(" %02X", (unsigned char)sendBuffer[j]);
+				}
+				printf("\n");
+				console.appendf("\n");
+
+				// We have user input, send over user selected protocol
+				if (!m_NetworkMode) {
+					// Write to COM port.
+					//int e = RS232_SendBuf(m_ComPorts.at(m_SelectedPort) - 1, reinterpret_cast<unsigned char*>(m_UserInput), i+1);
+					int result = RS232_SendBuf(m_ComPorts.at(m_SelectedPort) - 1, reinterpret_cast<unsigned char*>(sendBuffer), len + 1);
+					//RS232_cputs((m_ComPorts.at(m_SelectedPort) - 1), m_UserInput);
+
+					if (result < 0) {
+						printf("\nWriting failed! Port: %d", m_ComPorts.at(m_SelectedPort));
+						console.appendf("\n[-] Writing failed! Port: COM%d", m_ComPorts.at(m_SelectedPort));
+						printf("\n%.*s", len, sendBuffer);
+						console.appendf("\n%.*s", len, sendBuffer);
+					}
+					printf("\nWrote %d bytes on Comport %d", result, m_ComPorts.at(m_SelectedPort));
+
+				}
+				else  if(m_NetworkMode){
+					// TODO: Send Text to Server.
+					//send(ConnectSocket, m_UserInput, i, 0);
+					std::lock_guard<std::mutex> lock(queueMutex);
+					messageQueue.push(m_UserInput);
+
+				}
+				else {
+					// Neither mode selected?
+					printf("\n[-] No Communication Mode Selected!");
+					console.appendf("\n[-] No Communication Mode Selected!");
+				}
+				memset(m_UserInput, 0, sizeof(m_UserInput)); // clear the user input buffer after sending.
+
+				Out += "\n[+] Sent: ";
+				Out += sendBuffer; // This is the "console window" in Text Mode.
 			}
+
+
+
+
+
 			ImGui::SameLine();
 			if (ImGui::Button("Clear Buffer")) {
 				Out.clear();
 				memset(m_UserInput, 0, 128);
 			}
 			ImGui::BeginChild("Console", ImVec2(0, 300), true, ImGuiWindowFlags_HorizontalScrollbar);
-			ImGui::TextUnformatted(Out.c_str());
+			//ImGui::TextUnformatted(Out.c_str());
+			ImGui::TextUnformatted(console.begin(), console.end());
 			ImGui::EndChild();
 
 			ImGui::EndChild(); // End right column child
