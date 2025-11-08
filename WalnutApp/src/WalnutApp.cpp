@@ -78,6 +78,7 @@ DWORD WINAPI receiveThread(LPVOID lpParam) {
 	char buffer[1024];
 	int bytesReceived;
 	while (!stopThreads) {
+		inputTriggerLED = false;
 		bytesReceived = recv(clientSocket, buffer, sizeof(buffer) - 1, 0);
 		if (bytesReceived > 0) {
 			buffer[bytesReceived] = '\0'; // Null-terminate the received data
@@ -156,6 +157,7 @@ void AttemptConnect(SaveData data) {
 		int error_code = WSAGetLastError();
 		printf("Unable to connect to server.%d\n", error_code);
 		console.appendf("[-] Unable to connect to server. Error Code: %d\n", error_code);
+		scrollToBottom = true;
 		WSACleanup();
 	}
 	// send a test byte to see if connection is alive. (This is also used as a VERY simple Client auth with the Proxy Server.)
@@ -807,6 +809,7 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 				outputTriggerLED = true; // trigger LED on send
 				if (result < 0) {
 					console.appendf("[-] Error sending data over serial port.\n");
+					scrollToBottom = true;
 					outputTriggerLED = false;
 				}
 			}
@@ -1002,9 +1005,11 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 						//printf("Can not open comport COM%i\n", m_ComPorts.at(m_SelectedPort));
 						ErrorMsg = "Can not open comport COM" + std::to_string(m_ComPorts.at(m_SelectedPort) - 1);
 						console.appendf("[-] Error: %s\n", ErrorMsg.c_str());
+						scrollToBottom = true;
 					}
 					printf("Connected to com port: %d", m_ComPorts.at(m_SelectedPort));
 					console.appendf("[+] Connected to com port: COM%d\n", m_ComPorts.at(m_SelectedPort));
+					scrollToBottom = true;
 					
 
 
@@ -1244,12 +1249,14 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 			// (reconnection logic here unchanged)
 			//std::string modeStr = m_NetworkMode ? "Network" : "Serial";
 			console.appendf("[+] Application Mode Switched: [%s]\n", m_NetworkMode ? "Network" : "Serial");
+			scrollToBottom = true;
 
 			if (m_NetworkMode) {
 				if (ConnectSocket == INVALID_SOCKET) {           // close old one first
 					closesocket(ConnectSocket);
 					connectionAquired = false;                   // reset connection flag
-					console.appendf("invalid socket");
+					console.appendf("[-] Invalid Socket Passed into Networking Threads! wow!");
+					scrollToBottom = true;
 				}
 
 
@@ -1266,6 +1273,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 					if (ConnectSocket == INVALID_SOCKET) {
 						printf("Socket creation failed: %d\n", WSAGetLastError());
 						console.appendf("[-] Socket Creation Failed! [%d]\n", WSAGetLastError());
+						scrollToBottom = true;
 						isNetworkConnected = false;
 						return;
 					}
@@ -1281,6 +1289,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 						int error_code = WSAGetLastError();
 						printf("Unable to connect to server. %d\n", error_code);
 						console.appendf("[-] Unable to connect to server! [%d]\n", error_code);
+						scrollToBottom = true;
 						closesocket(ConnectSocket);
 						ConnectSocket = INVALID_SOCKET;
 						connectionAquired = false;
@@ -1302,6 +1311,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 						connectionAquired = true;
 						isNetworkConnected = true;
 						console.appendf("[+] Connected to server at %s:%d\n", m_SaveData.ipAddress.c_str(), m_SaveData.port);
+						scrollToBottom = true;
 					}
 				}
 
@@ -1449,6 +1459,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 					{
 						printf("ERROR: %d\n", ::GetLastError());
 						console.appendf("[-] ERROR Scanning COM Ports: [%d]\n", ::GetLastError());
+						scrollToBottom = true;
 						ErrorMsg = "ERROR: " + std::to_string(::GetLastError());
 					}
 
@@ -1458,6 +1469,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 				int selectedPort = m_ComPorts[m_SelectedPort];
 				printf("Selected COM Port: %d\n", selectedPort);
 				console.appendf("[+] Selected COM Port: %d\n", selectedPort);
+				scrollToBottom = true;
 				// Attempt to connect to Selected Serial Port.
 				char mode[] = { '8','N','1',0 }; // Serial port config. this sets bit mode & parity. 
 
@@ -1467,9 +1479,11 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 					//printf("Can not open comport COM%i\n", m_ComPorts.at(m_SelectedPort));
 					ErrorMsg = "Can not open comport COM" + std::to_string(m_ComPorts.at(m_SelectedPort) - 1);
 					console.appendf("[-] Cannot open comport COM%i\n", m_ComPorts.at(m_SelectedPort) - 1);
+					scrollToBottom = true;
 				}
 				printf("Connected to com port: %d", m_ComPorts.at(m_SelectedPort));
 				console.appendf("[+] Connected to com port: %d\n", m_ComPorts.at(m_SelectedPort)-1);
+				scrollToBottom = true;
 
 			}
 			ImGui::EndChild();
@@ -1610,6 +1624,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 				}
 				printf("\n");
 				console.appendf("\n");
+				scrollToBottom = true;
 
 				// We have user input, send over user selected protocol
 				if (!m_NetworkMode) {
@@ -1623,6 +1638,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 						console.appendf("\n[-] Writing failed! Port: COM%d", m_ComPorts.at(m_SelectedPort));
 						printf("\n%.*s", len, sendBuffer);
 						console.appendf("\n%.*s", len, sendBuffer);
+						scrollToBottom = true;
 					}
 					printf("\nWrote %d bytes on Comport %d", result, m_ComPorts.at(m_SelectedPort));
 
@@ -1653,6 +1669,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 			ImGui::SameLine();
 			if (ImGui::Button("Clear Buffer")) {
 				Out.clear();
+				console.clear();
 				memset(m_UserInput, 0, 128);
 			}
 
