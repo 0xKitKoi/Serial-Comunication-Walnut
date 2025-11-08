@@ -2,15 +2,31 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>     // close()
-#include <arpa/inet.h>  // inet_addr
-#include <netinet/in.h>
-#include <sys/socket.h>
+#ifdef _WIN32
+#  include <winsock2.h>
+#  include <ws2tcpip.h>
+#  pragma comment(lib, "ws2_32.lib")
+#  define CLOSE_SOCKET(s)  closesocket(s)
+#else
+#  include <sys/socket.h>
+#  include <arpa/inet.h>
+#  include <unistd.h>
+#  define CLOSE_SOCKET(s)  close(s)
+#endif
+
+//#include <unistd.h>     // close()
+//#include <arpa/inet.h>  // inet_addr
+//#include <netinet/in.h>
+//#include <sys/socket.h>
 
 #define SERVER_PORT 5000
 #define BUFFER_SIZE 256
 
 int main() {
+    #ifdef _WIN32
+        WSADATA wsa;
+        WSAStartup(MAKEWORD(2, 2), &wsa);
+    #endif
     int server_socket, client_socket;
     struct sockaddr_in server_addr, client_addr;
     socklen_t client_addr_len = sizeof(client_addr);
@@ -32,14 +48,14 @@ int main() {
 
     if (bind(server_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
         perror("[-] Bind failed");
-        close(server_socket);
+        CLOSE_SOCKET(server_socket);
         return 1;
     }
 
     // 3. Listen
     if (listen(server_socket, 1) < 0) {
         perror("[-] Listen failed");
-        close(server_socket);
+        CLOSE_SOCKET(server_socket);
         return 1;
     }
 
@@ -49,7 +65,7 @@ int main() {
     client_socket = accept(server_socket, (struct sockaddr*)&client_addr, &client_addr_len);
     if (client_socket < 0) {
         perror("[-] Accept failed");
-        close(server_socket);
+        CLOSE_SOCKET(server_socket);
         return 1;
     }
 
@@ -60,8 +76,8 @@ int main() {
     ssize_t n = recv(client_socket, &client_type, 1, 0); // This is a very simple way to auto reject connections that should not happen
     if (n != 1) {
         fprintf(stderr, "[-] Failed to read client type\n");
-        close(client_socket);
-        close(server_socket);
+        CLOSE_SOCKET(client_socket);
+        CLOSE_SOCKET(server_socket);
         return 1;
     }
 
@@ -71,8 +87,8 @@ int main() {
     char ack = 'A';
     if (send(client_socket, &ack, 1, 0) != 1) {
         fprintf(stderr, "[-] Failed to send ack\n");
-        close(client_socket);
-        close(server_socket);
+        CLOSE_SOCKET(client_socket);
+        CLOSE_SOCKET(server_socket);
         return 1;
     }
 
@@ -91,8 +107,18 @@ int main() {
         send(client_socket, buffer, bytes_received, 0);
     }
 
-    // 8. Cleanup
-    close(client_socket);
-    close(server_socket);
+    // 8. Cleanup   
+    //#ifdef _WIN32
+    //    closesocket(client_socket);
+     //   closesocket(server_socket);
+     //   WSACleanup();
+    CLOSE_SOCKET(client_socket);
+    CLOSE_SOCKET(server_socket);
+    #ifdef _WIN32
+        WSACleanup();
+    #else
+        close(client_socket);
+        close(server_socket);
+    #endif
     return 0;
 }
