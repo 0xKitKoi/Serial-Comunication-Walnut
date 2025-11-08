@@ -9,7 +9,7 @@ Write Up for this project is on my [Blog](https://scuzzy.space/writeup/dist/Micr
 At first, This project was intended to make [Michael Reevee's](https://youtu.be/_P24em7Auq0?si=aHVvcCby17MTgddT) Laser Turret Wireless. This Project uses two Raspberry Pi Pico W's to acomplish this. This Client, I'll call the TurretController, sends commands to a microcontroller (In my case a pico w) connected to the computer via USB Serial Ports. That Pico then either is the turret directly plugged in, or is a medium to connect to the turret wirelessly using raw sockets, Bluetooth, or NRF24l01 modules. Firmware for all of these are in the Examples folder. The Turret will connect to the microcontroller attached to your PC to parse commands. The turret controls Servo Motors to move the Laser, or an LCD/OLED Screen. This setup allows the Laser Turret System to be anywhere in the room, or be controlled remotely anywhere in the world. It uses [this library](https://gitlab.com/Teuniz/RS-232) to communicate over serial ports, and is multiplatform. Raw sockets are used for Networking, and all other communications like bluetooth and radio are sent over serial port to a microcontroller to act as the medium. (This will take nrf24 modules or the like)
 
 ## Screenshots
-![Main Page](https://github.com/0xKitKoi/Serial-Comunication-Walnut/blob/master/EXAMPLES/Images/Screenshot.png)
+![Main Page](https://raw.githubusercontent.com/0xKitKoi/Serial-Comunication-Walnut/refs/heads/master/EXAMPLES/Images/Screenshot.png)
 <img src="https://github.com/0xKitKoi/Serial-Comunication-Walnut/blob/master/EXAMPLES/Images/Demo.gif" width="400" height="500"/>
 
 
