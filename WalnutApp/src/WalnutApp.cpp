@@ -16,7 +16,6 @@
 #include <fstream>
 #include <sstream>
 
-#include "scuzzyimage.h" // Embedded Image for mouse mode. User holds left click on this to send mouse coords to the laser turret
 
 
 
@@ -403,20 +402,7 @@ public:
 				file.close();
 			}
 		}
-		
-		// Setup Sockets. Attempts of connection will happen by button (Network Mode).
-		//ConnectSocket = socket(AF_INET, SOCK_STREAM, 0);
-		//clientService.sin_family = AF_INET;
-		//clientService.sin_addr.s_addr = inet_addr(m_SaveData.ipAddress.c_str());
-		//clientService.sin_port = htons(m_SaveData.port);
 
-
-		// Load Embedded Image.
-		m_Image = std::make_shared<Walnut::Image>(
-			Scuzzy_png_width,
-			Scuzzy_png_height,
-			Walnut::ImageFormat::RGBA,
-			Scuzzy_png);
 
 		// Scan for COM ports on Initialization.
 		wchar_t lpTargetPath[5000];
@@ -467,165 +453,6 @@ public:
 		draw_list->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), glow, 0.0f, 0, 3.0f);
 	}
 
-
-
-
-	//void DrawVHSOverlay()
-	//{
-	//	ImGuiWindow* window = ImGui::GetCurrentWindow();
-	//	if (!window) return;
-
-	//	ImDrawList* draw_list = window->DrawList; // This is the window's draw list
-	//	ImVec2 screenSize = ImGui::GetIO().DisplaySize;
-	//	float time = ImGui::GetTime();
-
-	//	// Example: semi-transparent scanlines over the window
-	//	for (float y = window->Pos.y; y < window->Pos.y + window->Size.y; y += 3.0f)
-	//	{
-	//		float alpha = 50 + 50 * sinf(time * 10.0f + y * 0.1f);
-	//		ImU32 color = IM_COL32(0, 255, 0, (int)alpha);
-	//		draw_list->AddLine(ImVec2(window->Pos.x, y), ImVec2(window->Pos.x + window->Size.x, y), color, 1.0f);
-	//	}
-
-	//	// Add some glowing rectangles or effects inside window bounds
-	//	ImU32 glow = IM_COL32(0, 255, 100, 80);
-	//	draw_list->AddRect(window->Pos, ImVec2(window->Pos.x + window->Size.x, window->Pos.y + window->Size.y), glow, 0.0f, 0, 3.0f);
-	//}
-
-
-
-
-	//void DrawVHSOverlay()
-	//{
-	//	ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
-	//	ImVec2 screenSize = ImGui::GetIO().DisplaySize;
-	//	float time = ImGui::GetTime();
-
-	//	// Thick flickering scanlines
-	//	for (float y = 0; y < screenSize.y; y += 2.0f)
-	//	{
-	//		float alpha = 40 + 20 * sinf(time * 10.0f + y * 0.1f);
-	//		ImU32 color = IM_COL32(0, 255, 0, (int)alpha);
-	//		draw_list->AddLine(ImVec2(0, y), ImVec2(screenSize.x, y), color, 1.0f);
-	//	}
-
-	//	// Strong green tint flicker overlay
-	//	float flicker = 0.1f + 0.05f * sinf(time * 8.0f);
-	//	ImU32 tint = IM_COL32(0, 255, 0, (int)(flicker * 255));
-	//	draw_list->AddRectFilled(ImVec2(0, 0), screenSize, tint);
-
-	//	// Stronger ghosting bars
-	//	float ghostOffset = sinf(time * 6.0f) * 5.0f;
-	//	ImU32 ghostColor = IM_COL32(0, 255, 100, 60);
-	//	draw_list->AddRectFilled(ImVec2(ghostOffset, 0), ImVec2(screenSize.x + ghostOffset, screenSize.y), ghostColor);
-	//}
-
-
-
-
-	//void DrawRetroMousePad()
-	//{
-	//	ImVec2 padSize = ImVec2(300, 300);
-	//	ImVec2 padTopLeft = ImGui::GetCursorScreenPos();
-	//	ImVec2 padBottomRight = ImVec2(padTopLeft.x + padSize.x, padTopLeft.y + padSize.y);
-	//	ImDrawList* draw_list = ImGui::GetWindowDrawList();
-
-
-	//	//// Assume turret is centered at bottom middle
-	//	ImVec2 turretCenter = ImVec2(padTopLeft.x + padSize.x / 2.0f, padBottomRight.y);
-
-	//	// Draw arc as guide (180 degrees)
-	//	int segments = 64;
-	//	float radius = padSize.y;
-	//	ImU32 arcColor = IM_COL32(255, 255, 100, 80);
-	//	draw_list->PathArcTo(turretCenter, radius, IM_PI, 2 * IM_PI, segments);
-	//	draw_list->PathStroke(arcColor, false, 1.5f);
-
-	//	
-
-
-
-	//	float time = ImGui::GetTime();
-	//	float pulse = (sinf(time * 2.0f) * 0.5f + 0.5f); // oscillates 0 to 1
-	//	int alpha = 50 + int(pulse * 80);
-	//	//ImU32 gridColor = IM_COL32(255, 50, 50, alpha); // glowing red
-	//	ImU32 gridColor = IM_COL32(255, 165, 0, alpha); // glowing red
-
-	//	// --- Background Grid (+ signs) ---
-	//	float spacing = 40.0f;
-	//	float symbolSize = ImGui::CalcTextSize("+").x;
-	//	for (float y = padTopLeft.y + 5; y <= padBottomRight.y; y += spacing)
-	//	{
-	//		for (float x = padTopLeft.x + 10; x <= padBottomRight.x; x += spacing)
-	//		{
-	//			draw_list->AddText(ImVec2(x - symbolSize * 0.5f, y - symbolSize * 0.5f), gridColor, "+");
-	//		}
-	//	}
-
-	//	// --- Interactive Area ---
-	//	ImGui::InvisibleButton("##RetroPad", padSize);
-	//	bool hovered = ImGui::IsItemHovered();
-	//	bool held = ImGui::IsMouseDown(ImGuiMouseButton_Left);
-	//	//ImVec2 mouse = ImGui::GetMousePos();
-
-	//	// --- Glowing Red Border ---
-	//	for (int i = 0; i < 5; ++i)
-	//	{
-	//		float thickness = 1.0f + i;
-	//		ImU32 color = IM_COL32(255, 50, 50, 50 - i * 10);
-	//		draw_list->AddRect(padTopLeft, padBottomRight, color, 0.0f, 0, thickness);
-	//	}
-
-	//	// --- Crosshair & Target Circle ---
-	//	ImVec2 padMin = ImGui::GetItemRectMin();
-	//	ImVec2 padMax = ImGui::GetItemRectMax();
-	//	ImVec2 mousePos = ImGui::GetMousePos();
-
-
-	//	//ImVec2 turretCenter = ImVec2(padTopLeft.x + padSize.x / 2.0f, padBottomRight.y);
-	//	ImVec2 targetPos = ImVec2(padMin.x + m_MouseX, padMin.y + m_MouseY);
-
-	//	draw_list->AddLine(turretCenter, targetPos, IM_COL32(255, 255, 255, 200), 2.0f);
-
-
-	//	// Always calculate relative position if inside pad
-	//	ImVec2 localMouse = ImVec2(mousePos.x - padMin.x, mousePos.y - padMin.y);
-	//	if (localMouse.x >= 0 && localMouse.x <= padSize.x &&
-	//		localMouse.y >= 0 && localMouse.y <= padSize.y)
-	//	{
-	//		m_MouseX = localMouse.x;
-	//		m_MouseY = localMouse.y;
-	//	}
-
-	//	if (hovered && held)
-	//	{
-
-	//		ImVec2 localMouse = ImVec2(mousePos.x - padMin.x, mousePos.y - padMin.y);
-	//		m_MouseX = localMouse.x;
-	//		m_MouseY = localMouse.y;
-
-	//		ImVec2 mouseRel = ImVec2(mousePos.x - padTopLeft.x, mousePos.y - padTopLeft.y);
-	//		if (mouseRel.x >= 0 && mouseRel.x <= padSize.x && mouseRel.y >= 0 && mouseRel.y <= padSize.y)
-	//		{
-	//			for (int i = 0; i < 4; ++i)
-	//			{
-	//				float thickness = 1.0f + i;
-	//				ImU32 color = IM_COL32(255, 50, 50, 60 - i * 10);
-	//				draw_list->AddLine(ImVec2(padTopLeft.x, mousePos.y), ImVec2(padBottomRight.x, mousePos.y), color, thickness);
-	//				draw_list->AddLine(ImVec2(mousePos.x, padTopLeft.y), ImVec2(mousePos.x, padBottomRight.y), color, thickness);
-	//			}
-
-	//			// --- Pulsing White Circle at Mouse ---
-	//			float pulseRadius = 4.0f + 2.0f * sinf(time * 4.0f);
-	//			ImU32 circleColor = IM_COL32(255, 255, 255, 180);
-	//			draw_list->AddCircle(mousePos, pulseRadius, circleColor, 16, 2.0f);
-
-	//			// Optional: Send relative position
-	//			ImVec2 relativeMousePos = mouseRel;
-	//			// send_to_device(relativeMousePos.x, relativeMousePos.y);
-	//		}
-	//	} 
-	//}
 
 
 void DrawWormholeGridBackground()
@@ -816,13 +643,6 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 
 			ImVec2 mouseRel = ImVec2(mousePos.x - padTopLeft.x, mousePos.y - padTopLeft.y);
 
-			// send_to_device(mouseRel.x, mouseRel.y); // Optional
-			// Position of mouse cursor relative to image, then scaled by 180 degrees of rotation for the servo motor.
-			//ImVec2 relativePos = ImVec2((pos.x - imagePos.x) / (m_Image->GetHeight() / 180), (pos.y - imagePos.y) / (m_Image->GetWidth() / 180));
-			//ImGui::Text("Coords are sent over serial as: (X%uY%u)", (int)relativePos.x, (int)relativePos.y);
-
-
-
 			// Optional: Crosshairs
 			for (int i = 0; i < 4; ++i)
 			{
@@ -877,25 +697,6 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 		draw_list->AddText(tabtextPos, IM_COL32(255, 255, 255, 255), label);
 
 
-
-		//ImVec2 points[4] = { tabTopLeft, tabTopRight, tabBottomRight, tabBottomLeft };
-		//draw_list->AddConvexPolyFilled(points, 4, tabColor);
-
-
-		//// Define trapezoid corners
-		//ImVec2 tabTopLeft = pos;
-		//ImVec2 tabTopRight = ImVec2(pos.x + width - 20, pos.y);
-		//ImVec2 tabBottomRight = ImVec2(pos.x + width, pos.y + tabHeight);
-		//ImVec2 tabBottomLeft = ImVec2(pos.x, pos.y + tabHeight);
-
-		//// Draw trapezoid tab background
-		//ImU32 tabColor = IM_COL32(80, 120, 255, 255);
-		//draw_list->AddConvexPolyFilled({ tabTopLeft, tabTopRight, tabBottomRight, tabBottomLeft }, tabColor);
-
-		// Draw tab label
-		//ImVec2 textPos = ImVec2(pos.x + 8, pos.y + tabHeight * 0.5f - ImGui::GetFontSize() * 0.5f);
-		//draw_list->AddText(textPos, IM_COL32_WHITE, label);
-
 		// Detect hover and click on trapezoid tab
 		ImVec2 tabMin = tabTopLeft;
 		ImVec2 tabMax = tabBottomRight;
@@ -914,27 +715,13 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 			ImVec2 dropdownPos = ImVec2(pos.x, pos.y + tabHeight);
 			ImVec2 dropdownSize = ImVec2(width, dropdownMaxHeight);
 
-			//// Draw glowing border
-			//for (int i = 0; i < 3; ++i)
-			//{
-			//	ImU32 glowColor = IM_COL32(100, 100, 255, 60 - i * 15);
-			//	//draw_list->AddRect(dropdownPos, dropdownPos + dropdownSize, glowColor, 6.0f, 0, 2.0f + i * 1.5f);
-			//	ImVec2 p_min = dropdownPos;
-			//	ImVec2 p_max = ImVec2(dropdownPos.x + dropdownSize.x, dropdownPos.y + dropdownSize.y);
-			//	draw_list->AddRect(p_min, p_max, glowColor, 6.0f, 0, 2.0f + i * 1.5f);
-
-			//}
+			
 			for (int i = 0; i < 3; ++i)
 			{
 				ImU32 glowColor = IM_COL32(255, 255, 100, 60 - i * 15); // yellowish glow
 				draw_list->AddRect(dropdownPos, ImVec2(dropdownPos.x + dropdownSize.x, dropdownPos.y + dropdownSize.y), glowColor, 6.0f, 0, 2.0f + i * 1.5f);
 			}
 
-
-			//// Draw dropdown background
-			//ImGui::SetCursorScreenPos(dropdownPos + ImVec2(4, 4));
-			//std::string child_id = std::string("##") + label + "_List";
-			//ImGui::BeginChild(child_id.c_str(), dropdownSize - ImVec2(8, 8), false);
 
 			ImVec2 offsetPos = ImVec2(dropdownPos.x + 4, dropdownPos.y + 4);
 			ImVec2 childSize = ImVec2(dropdownSize.x - 8, dropdownSize.y - 8);
@@ -943,25 +730,6 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 
 			std::string child_id = std::string("##") + label + "_List";
 			ImGui::BeginChild(child_id.c_str(), childSize, false);
-
-
-
-			//ImGui::BeginChild(("##" + std::string(label) + "_List").c_str(), dropdownSize - ImVec2(8, 8), false);
-
-			//// Items list
-			//for (int i = 0; i < (int)items.size(); ++i)
-			//{
-			//	std::string itemLabel = "COM" + std::to_string(items[i]);
-			//	bool isSelected = (i == selectedIndex);
-			//	if (ImGui::Selectable(itemLabel.c_str(), isSelected))
-			//	{
-			//		selectedIndex = i;
-			//		isOpen = false;
-			//		selectionChanged = true;
-			//	}
-			//	if (isSelected)
-			//		ImGui::SetItemDefaultFocus();
-			//}
 
 
 			for (int i = 0; i < (int)items.size(); i++)
@@ -998,7 +766,7 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 					isOpen = false;
 					selectionChanged = true;
 					// your connect logic here
-					char mode[] = { '8','N','1',0 }; // Serial port config. this sets bit mode & parity, and I don't thin this EVER chnages. 
+					char mode[] = { '8','N','1',0 }; // Serial port config. this sets bit mode & parity, and I don't think this EVER changes. 
 
 					if (RS232_OpenComport(m_ComPorts.at(m_SelectedPort) - 1, m_SaveData.baudrate, mode, 0)) // (ComPort, Baudrate, mode, flowcontrol)
 					{
@@ -1010,8 +778,6 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 					printf("Connected to com port: %d", m_ComPorts.at(m_SelectedPort));
 					console.appendf("[+] Connected to com port: COM%d\n", m_ComPorts.at(m_SelectedPort));
 					scrollToBottom = true;
-					
-
 
 				}
 
@@ -1028,8 +794,6 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 			}
 		}
 
-		// Advance cursor below the widget
-		//ImGui::SetCursorScreenPos(pos + ImVec2(0, tabHeight + (isOpen ? dropdownMaxHeight : 0)));
 		ImGui::SetCursorScreenPos(ImVec2(pos.x, pos.y + tabHeight + (isOpen ? dropdownMaxHeight : 0)));
 
 
@@ -1037,149 +801,11 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 	}
 
 
-
-
-	//void DrawStatusIndicator(const char* label, bool state, ImVec2 pos)
-	//{
-	//	ImDrawList* draw_list = ImGui::GetWindowDrawList();
-	//	float time = ImGui::GetTime();
-	//	float pulse = (sinf(time * 6.0f) * 0.5f + 0.5f); // fast pulse
-	//	int alpha = state ? (int)(180 + pulse * 75) : 60;
-	//	ImU32 color = state ? IM_COL32(0, 255, 100, alpha) : IM_COL32(255, 50, 50, alpha);
-
-	//	ImVec2 size = ImVec2(12, 12);
-	//	ImVec2 end = ImVec2(pos.x + size.x, pos.y + size.y);
-	//	float rounding = 3.0f;
-
-	//	for (int i = 0; i < 3; ++i)
-	//	{
-	//		draw_list->AddRect(pos, end, color, rounding, 0, 1.0f + i);
-	//	}
-	//	draw_list->AddRectFilled(pos, end, color, rounding);
-
-	//	ImGui::SetCursorScreenPos(ImVec2(end.x + 6, pos.y - 2));
-	//	ImGui::TextColored(state ? ImVec4(0.3f, 1.0f, 0.3f, 1.0f) : ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "%s", label);
-	//}
-
-
-	//void DrawStatusIndicator(const char* label, bool isActive, ImVec2 pos)
-	//{
-	//	ImDrawList* draw_list = ImGui::GetWindowDrawList();
-
-	//	const float radius = 8.0f;
-	//	const float ledDiameter = radius * 2.0f;
-
-	//	// Base colors for active/inactive states
-	//	ImVec4 baseColor = isActive
-	//		? ImVec4(0.4f, 1.0f, 0.4f, 1.0f)  // bright green
-	//		: ImVec4(1.0f, 0.4f, 0.4f, 1.0f); // bright red
-
-	//	float time = ImGui::GetTime();
-	//	float pulse = 0.5f + 0.5f * sinf(time * 4.0f);
-
-	//	// Pulsing alpha only if active; otherwise static alpha
-	//	baseColor.w = isActive ? (0.7f + 0.3f * pulse) : 0.6f;
-
-	//	ImU32 ledColor = ImColor(baseColor);
-
-	//	// Draw glowing aura behind LED (larger semi-transparent circles layered)
-	//	for (int i = 3; i >= 1; --i)
-	//	{
-	//		float glowRadius = radius + i * 3.0f;
-	//		float alpha = baseColor.w * (0.15f / i); // fading out glow
-	//		ImU32 glowColor = ImColor(baseColor.x, baseColor.y, baseColor.z, alpha);
-	//		draw_list->AddCircleFilled(ImVec2(pos.x + radius, pos.y + radius), glowRadius, glowColor, 16);
-	//	}
-
-	//	// Draw main LED circle
-	//	draw_list->AddCircleFilled(ImVec2(pos.x + radius, pos.y + radius), radius, ledColor, 16);
-
-	//	// Draw white outline around LED
-	//	draw_list->AddCircle(ImVec2(pos.x + radius, pos.y + radius), radius, IM_COL32(255, 255, 255, 180), 16, 2.0f);
-
-	//	// Draw label text to the right of the LED
-	//	ImVec2 textPos = ImVec2(pos.x + ledDiameter + 8, pos.y + radius - ImGui::CalcTextSize(label).y * 0.5f);
-	//	ImGui::GetWindowDrawList()->AddText(textPos, IM_COL32(180, 255, 180, 255), label);
-	//}
-
-
-
-
-	//void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
-	//{
-	//	ImDrawList* draw_list = ImGui::GetWindowDrawList();
-	//	float time = ImGui::GetTime();
-
-	//	// Make it strobe faster (adjust the multiplier if needed)
-	//	bool flashVisible = isOn && (fmod(time * 10.0f, 1.0f) < 0.5f);
-
-	//	const float ledWidth = 20.0f;
-	//	const float ledHeight = 12.0f;
-	//	const float cornerRadius = 4.0f;
-
-	//	ImVec2 ledPos = pos;
-	//	ImVec2 textPos = ImVec2(pos.x + ledWidth + 8, pos.y + 1);
-
-	//	if (flashVisible)
-	//	{
-	//		ImU32 glowColor = IM_COL32(0, 255, 0, 180); // Bright green
-	//		for (int i = 0; i < 3; ++i)
-	//		{
-	//			float grow = static_cast<float>(i);
-	//			draw_list->AddRect(
-	//				ImVec2(ledPos.x - grow, ledPos.y - grow),
-	//				ImVec2(ledPos.x + ledWidth + grow, ledPos.y + ledHeight + grow),
-	//				glowColor, cornerRadius + i, 0, 1.5f);
-	//		}
-	//	}
-	//	// Retro glowing text label
-	//	ImGui::GetWindowDrawList()->AddText(
-	//		textPos, IM_COL32(0, 255, 0, 255), label);
-	//}
-
-
-//void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
-//{
-//	ImDrawList* draw_list = ImGui::GetWindowDrawList();
-//	float time = ImGui::GetTime();
-//
-//	// Always flash — toggle visible state every ~0.1s
-//	bool flashVisible = fmod(time * 10.0f, 1.0f) < 0.5f;
-//
-//	const float ledWidth = 20.0f;
-//	const float ledHeight = 12.0f;
-//	const float cornerRadius = 4.0f;
-//
-//	ImVec2 ledPos = pos;
-//	ImVec2 textPos = ImVec2(pos.x + ledWidth + 8, pos.y + 1);
-//
-//	if (flashVisible)
-//	{
-//		ImU32 glowColor = isOn ? IM_COL32(0, 255, 0, 200) : IM_COL32(255, 50, 50, 200); // green or red
-//
-//		// Outer glow layers
-//		for (int i = 0; i < 3; ++i)
-//		{
-//			float grow = static_cast<float>(i);
-//			draw_list->AddRect(
-//				ImVec2(ledPos.x - grow, ledPos.y - grow),
-//				ImVec2(ledPos.x + ledWidth + grow, ledPos.y + ledHeight + grow),
-//				glowColor, cornerRadius + i, 0, 1.5f);
-//		}
-//	}
-//
-//	// Glowing text
-//	ImU32 textColor = isOn ? IM_COL32(0, 255, 0, 255) : IM_COL32(255, 50, 50, 255);
-//	draw_list->AddText(textPos, textColor, label);
-//}
-
-
 void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 {
 	ImDrawList* draw_list = ImGui::GetWindowDrawList();
 	float time = ImGui::GetTime();
 
-	// Flashing logic (always flashes)
 	bool flashVisible = fmod(time * 10.0f, 1.0f) < 0.5f;
 
 	const float ledWidth = 20.0f;
@@ -1219,10 +845,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 
 
 	virtual void OnUIRender() override
-	{
-
-		//DrawVHSOverlay();
-		
+	{	
 
 		ImGui::Begin("Laser Turret Control Panel");
 			DrawWormholeGridBackground();
@@ -1246,8 +869,6 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 		ImGui::SameLine();
 		if (ImGui::Button("Toggle Serial/Network")) {
 			m_NetworkMode = !m_NetworkMode;
-			// (reconnection logic here unchanged)
-			//std::string modeStr = m_NetworkMode ? "Network" : "Serial";
 			console.appendf("[+] Application Mode Switched: [%s]\n", m_NetworkMode ? "Network" : "Serial");
 			scrollToBottom = true;
 
@@ -1261,8 +882,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 
 
 				if (connectionAquired) {
-					// Already connected, dont try to reconnect
-					//console.appendf();
+					// Already connected, dont try to reconnect or make a new socket every frame.
 					isNetworkConnected = true;
 					return;
 				}
@@ -1278,11 +898,10 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 						return;
 					}
 
+					// From SaveFile, change in Settings Popup
 					clientService.sin_family = AF_INET;
-					//clientService.sin_addr.s_addr = inet_addr("192.168.1.100");  // Replace with actual IP
-					//clientService.sin_port = htons(12345); // Replace with actual port
-					clientService.sin_addr.s_addr = inet_addr(m_SaveData.ipAddress.c_str());  // Replace with actual IP
-					clientService.sin_port = htons(m_SaveData.port); // Replace with actual port
+					clientService.sin_addr.s_addr = inet_addr(m_SaveData.ipAddress.c_str());
+					clientService.sin_port = htons(m_SaveData.port);
 
 					// Attempt to connect
 					if (connect(ConnectSocket, (SOCKADDR*)&clientService, sizeof(clientService)) == SOCKET_ERROR) {
@@ -1296,11 +915,10 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 						isNetworkConnected = false;
 					}
 					else {
-						send(ConnectSocket, "W", 1, 0); // initial handshake or ping
+						send(ConnectSocket, "W", 1, 0); // initial handshake or ping!
 
 						// Launch threads
-						SOCKET sockCopy = ConnectSocket;   // copy while it’s still valid
-						//std::thread st(sendThread, reinterpret_cast<void*>(sockCopy));
+						SOCKET sockCopy = ConnectSocket;   // copy while it’s still valid, IDK why this works but static_cast doesn't?
 						//std::thread recvThread(&receiveThread, static_cast<void*>(&ConnectSocket));
 						//std::thread sendThread(&sendThread, static_cast<void*>(&ConnectSocket));
 						std::thread recvThread(&receiveThread, reinterpret_cast<void*>(sockCopy));
@@ -1317,11 +935,6 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 
 			}
 			else {
-				// Serial mode selected ? clean up socket
-				//if (ConnectSocket == INVALID_SOCKET) {
-				//	closesocket(ConnectSocket);
-				//	ConnectSocket = INVALID_SOCKET;
-				//}
 				closesocket(ConnectSocket);
 				ConnectSocket = INVALID_SOCKET;
 				connectionAquired = false;
@@ -1331,72 +944,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 		}
 
 
-
-
-		// Update comPorts before calling widget, e.g. after scanning ports
-		
-		/*
-		if (CustomTrapezoidDropdown("Select a COM Port", m_ComPorts, m_SelectedPort))
-		{
-			m_ComPorts.clear();
-			// Getting list of COM ports super easy
-			// https://stackoverflow.com/a/60950058/9274593
-			wchar_t lpTargetPath[5000];
-			for (int i = 0; i < 255; i++) {
-				std::wstring str = L"COM" + std::to_wstring(i); // converting to COM0, COM1, COM2
-				DWORD res = QueryDosDevice(str.c_str(), lpTargetPath, 5000);
-
-				// Test the return value and error if any
-				if (res != 0) //QueryDosDevice returns zero if it didn't find an object
-				{
-					m_ComPorts.push_back(i);
-					//std::cout << str << ": " << lpTargetPath << std::endl;
-				}
-				if (::GetLastError() == ERROR_INSUFFICIENT_BUFFER)
-				{
-					printf("ERROR: %d\n", ::GetLastError());
-					ErrorMsg = "ERROR: " + std::to_string(::GetLastError());
-				}
-
-			}
-
-			// Selection changed!
-			int selectedPort = m_ComPorts[m_SelectedPort];
-			printf("Selected COM Port: %d\n", selectedPort);
-			// Attempt to connect to Selected Serial Port.
-			char mode[] = { '8','N','1',0 }; // Serial port config. this sets bit mode & parity. 
-
-			//if (RS232_OpenComport(m_ComPorts.at(m_SelectedPort) -1 , 115200, mode, 0)) // (ComPort, Baudrate, mode, flowcontrol)
-			if (RS232_OpenComport(m_ComPorts.at(m_SelectedPort) - 1, m_SaveData.baudrate, mode, 0)) // (ComPort, Baudrate, mode, flowcontrol)
-			{
-				//printf("Can not open comport COM%i\n", m_ComPorts.at(m_SelectedPort));
-				ErrorMsg = "Can not open comport COM" + std::to_string(m_ComPorts.at(m_SelectedPort) - 1);
-			}
-			printf("Connected to com port: %d", m_ComPorts.at(m_SelectedPort));
-
-		}
-		*/
-
-
-		//// Com Port Dropdown
-		//ImGui::SameLine();
-		//if (!m_NetworkMode) {
-		//	ImGui::PushItemWidth(200);
-		//	if (ImGui::BeginCombo("##combo", "Select a COM Port")) {
-		//		for (int i = 0; i < m_ComPorts.size(); ++i) {
-		//			std::string label = "COM" + std::to_string(m_ComPorts[i]);
-		//			if (ImGui::Selectable(label.c_str(), m_SelectedPort == i)) {
-		//				m_SelectedPort = i;
-		//				globalport = i;
-		//				// Serial port connect code here
-		//			}
-		//		}
-		//		ImGui::EndCombo();
-		//	}
-		//	ImGui::PopItemWidth();
-		//}
-
-// Begin Columns with 2 columns, no resizing
+		// Begin Columns with 2 columns, no resizing
 		ImGui::Columns(2, nullptr, false);
 
 		// LEFT COLUMN — group mousepad + dropdown + coords inside ONE child box
@@ -1409,11 +957,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 
 		ImGui::Spacing();
 		ImGui::Dummy(ImVec2(0, 20)); // Push down below coords
-		//ImGui::Dummy(ImVec2(0, 20)); // Push down below coords
 
-		// Status LED row
-		//ImVec2 ledStart = ImGui::GetCursorScreenPos();
-		//ImGui::Spacing();
 
 		ImVec2 indicatorStart = ImGui::GetCursorScreenPos();
 		float time = ImGui::GetTime();
@@ -1473,7 +1017,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 				// Attempt to connect to Selected Serial Port.
 				char mode[] = { '8','N','1',0 }; // Serial port config. this sets bit mode & parity. 
 
-				//if (RS232_OpenComport(m_ComPorts.at(m_SelectedPort) -1 , 115200, mode, 0)) // (ComPort, Baudrate, mode, flowcontrol)
+				//if (RS232_OpenComport(m_ComPorts.at(m_SelectedPort) -1 , 115200, mode, 0)) // (ComPort, Baudrate, mode, flowcontrol) // dont hardcode baudrate
 				if (RS232_OpenComport(m_ComPorts.at(m_SelectedPort) - 1, m_SaveData.baudrate, mode, 0)) // (ComPort, Baudrate, mode, flowcontrol)
 				{
 					//printf("Can not open comport COM%i\n", m_ComPorts.at(m_SelectedPort));
@@ -1489,32 +1033,6 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 			ImGui::EndChild();
 
 			ImGui::Dummy(ImVec2(0, 10)); // spacing
-
-			//ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
-			//ImGui::Text("Mouse X: %.1f", m_MouseX);
-			//ImGui::Text("Mouse Y: %.1f", m_MouseY);
-			//ImGui::PopStyleColor();
-
-			//ImVec2 cursorPos = ImGui::GetCursorScreenPos();
-			//ImDrawList* drawList = ImGui::GetWindowDrawList();
-
-			//std::string mouseXText = "Mouse X: " + std::to_string((int)m_MouseX);
-			//std::string mouseYText = "Mouse Y: " + std::to_string((int)m_MouseY);
-
-			//// Settings
-			//float glowThickness = 1.5f;
-			//ImU32 glowColor = IM_COL32(255, 255, 100, 200);
-			//ImU32 shadowColor = IM_COL32(0, 0, 0, 150);
-			//ImU32 textColor = IM_COL32(255, 255, 255, 255);
-
-			//// Draw Mouse X
-			//drawList->AddText(ImVec2(cursorPos.x + 1, cursorPos.y + 1), shadowColor, mouseXText.c_str()); // Shadow
-			//drawList->AddText(ImVec2(cursorPos.x, cursorPos.y), textColor, mouseXText.c_str());            // Foreground
-			//cursorPos.y += ImGui::GetTextLineHeight() + 4;
-
-			//// Draw Mouse Y
-			//drawList->AddText(ImVec2(cursorPos.x + 1, cursorPos.y + 1), shadowColor, mouseYText.c_str());  // Shadow
-			//drawList->AddText(ImVec2(cursorPos.x, cursorPos.y), textColor, mouseYText.c_str());            // Foreground
 
 			// Position & size
 			ImVec2 coordBoxSize = ImVec2(200, 50); // adjust as needed
@@ -1543,29 +1061,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 
 			// Add spacing afterward if needed
 			ImGui::Dummy(ImVec2(coordBoxSize.x, coordBoxSize.y));
-
-
 			ImGui::Spacing();
-
-
-			//DrawVHSOverlay();
-
-
-			//ImGui::Spacing();
-			//ImGui::Dummy(ImVec2(0, 20)); // Push down below coords
-			//ImGui::Dummy(ImVec2(0, 20)); // Push down below coords
-
-			//// Status LED row
-			//ImVec2 ledStart = ImGui::GetCursorScreenPos();
-
-			//DrawStatusIndicator("Networking", isNetworkConnected, ledStart);
-			////ImGui::SameLine(180); // Spacing between indicators
-			//DrawStatusIndicator("COM Input", comPortHasInput, ImVec2(ledStart.x + 180, ledStart.y));
-			////ImGui::SameLine(320);
-			//DrawStatusIndicator("COM Output", comPortHasOutput, ImVec2(ledStart.x + 320, ledStart.y));
-
-			
-
 			ImGui::EndGroup(); // End dropdown + coords group
 
 			ImGui::EndChild(); // End left column child
@@ -1584,21 +1080,18 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 			//refocusTextBox = false;               // clear flag immediately
 			bool sendByEnter = ImGui::InputText("##Text", m_UserInput, 128, ImGuiInputTextFlags_EnterReturnsTrue);
 			ImGui::SameLine();
-			//if (ImGui::Button("Send")) {
-			//	// send logic unchanged
-			//}
 
 			bool sendByClick = ImGui::Button("Send");
-			//if (ImGui::Button("Send")) {
 			if (sendByEnter || sendByClick) {
 				int len = strlen(m_UserInput); // safer than looping
 				char sendBuffer[130]; // 128 + \n + \0
 				memcpy(sendBuffer, m_UserInput, len);
-				sendBuffer[len] = '\n';  // newline to trigger Arduino parsing
+				sendBuffer[len] = '\n';  // newline to trigger Arduino parsing? LOL
 				sendBuffer[len + 1] = '\0';
 
 
 
+				// horrible debug buffer dumps
 				//int i;
 				//for (i = 0; i < 128; i++) {
 				//	if (m_UserInput[i] == '\0') { // find index of end of null terminated string
@@ -1695,336 +1188,6 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 		
 	}
 
-	
-	/*
-	* 
-	* 
-	* 
-	virtual void OnUIRender() override
-	{
-
-
-
-
-
-
-		ImGui::Begin("Serial Comunication");
-
-		if (OpenSettings) {
-			OpenSettingsFile();
-		}
-		if (showPopup) {
-			OpenAbout();
-		}
-		
-		ImGui::SameLine();
-		if (!m_MouseMode) {
-			if (ImGui::Button("Toggle Mouse Mode")) {
-				m_MouseMode = !m_MouseMode;
-			}
-		}
-		else {
-			if(ImGui::Button("Text Mode")) {
-				m_MouseMode = !m_MouseMode;
-			}
-		}
-		ImGui::SameLine();
-		ImGui::PushItemWidth(200);
-
-		if (ImGui::Button("Toggle Serial/Network")) {
-			m_NetworkMode = !m_NetworkMode;
-
-			if (m_NetworkMode) {
-				if (connectionAquired) {
-					// Already connected
-					return;
-				}
-
-				// Create the socket
-				ConnectSocket = socket(AF_INET, SOCK_STREAM, 0);
-				if (ConnectSocket == INVALID_SOCKET) {
-					printf("Socket creation failed: %d\n", WSAGetLastError());
-					return;
-				}
-
-				clientService.sin_family = AF_INET;
-				//clientService.sin_addr.s_addr = inet_addr("192.168.1.100");  // Replace with actual IP
-				//clientService.sin_port = htons(12345); // Replace with actual port
-				clientService.sin_addr.s_addr = inet_addr(m_SaveData.ipAddress.c_str());  // Replace with actual IP
-				clientService.sin_port = htons(m_SaveData.port); // Replace with actual port
-
-				// Attempt to connect
-				if (connect(ConnectSocket, (SOCKADDR*)&clientService, sizeof(clientService)) == SOCKET_ERROR) {
-					int error_code = WSAGetLastError();
-					printf("Unable to connect to server. %d\n", error_code);
-					closesocket(ConnectSocket);
-					ConnectSocket = INVALID_SOCKET;
-					connectionAquired = false;
-				}
-				else {
-					send(ConnectSocket, "W", 1, 0); // initial handshake or ping
-
-					// Launch threads
-					std::thread recvThread(&receiveThread, static_cast<void*>(&ConnectSocket));
-					std::thread sendThread(&sendThread, static_cast<void*>(&ConnectSocket));
-					recvThread.detach();
-					sendThread.detach();
-
-					connectionAquired = true;
-				}
-
-			}
-			else {
-				// Serial mode selected — clean up socket
-				if (ConnectSocket != INVALID_SOCKET) {
-					closesocket(ConnectSocket);
-					ConnectSocket = INVALID_SOCKET;
-				}
-				connectionAquired = false;
-			}
-		}
-
-
-		ImGui::SameLine();
-		ImGui::PushItemWidth(200);
-
-		
-		bool isDropdownOpen = false;
-		if (!m_NetworkMode) {
-			if (ImGui::BeginCombo("##combo", "Select a Com Port")) {
-				int size = m_ComPorts.size();
-				for (int i = 0; i < size; i++) {
-					bool isSelected = (m_SelectedPort == i);
-					int tmp = m_ComPorts.at(i);
-					std::string item = std::to_string(tmp);
-
-					if (ImGui::Selectable(item.c_str(), isSelected)) {
-						m_SelectedPort = i;
-						globalport = i;
-						// Attempt to connect to Selected Serial Port.
-						char mode[] = { '8','N','1',0 }; // Serial port config. this sets bit mode & parity. 
-
-						//if (RS232_OpenComport(m_ComPorts.at(m_SelectedPort) -1 , 115200, mode, 0)) // (ComPort, Baudrate, mode, flowcontrol)
-						if (RS232_OpenComport(m_ComPorts.at(m_SelectedPort) - 1, m_SaveData.baudrate, mode, 0)) // (ComPort, Baudrate, mode, flowcontrol)
-						{
-							//printf("Can not open comport COM%i\n", m_ComPorts.at(m_SelectedPort));
-							ErrorMsg = "Can not open comport COM" + std::to_string(m_ComPorts.at(m_SelectedPort) - 1);
-						}
-						printf("Connected to com port: %d", m_ComPorts.at(m_SelectedPort) );
-					}
-					if (isSelected) {
-						ImGui::SetItemDefaultFocus();
-					}
-				}
-				ImGui::EndCombo();
-			}
-		}
-
-
-		// Check if the dropdown menu is clicked to open
-		if (ImGui::IsItemClicked()) {
-			isDropdownOpen = true;
-
-			// Clear the vector of detected ports and scan for more.
-			m_ComPorts.clear();
-			// Getting list of COM ports super easy
-			// https://stackoverflow.com/a/60950058/9274593
-			wchar_t lpTargetPath[5000];
-			for (int i = 0; i < 255; i++) {
-				std::wstring str = L"COM" + std::to_wstring(i); // converting to COM0, COM1, COM2
-				DWORD res = QueryDosDevice(str.c_str(), lpTargetPath, 5000);
-
-				// Test the return value and error if any
-				if (res != 0) //QueryDosDevice returns zero if it didn't find an object
-				{
-					m_ComPorts.push_back(i);
-					//std::cout << str << ": " << lpTargetPath << std::endl;
-				}
-				if (::GetLastError() == ERROR_INSUFFICIENT_BUFFER)
-				{
-					printf("ERROR: %d\n", ::GetLastError());
-					ErrorMsg = "ERROR: " + std::to_string(::GetLastError());
-				}
-
-			}
-		}
-		else {
-			isDropdownOpen = false;
-		}
-		
-		ImGui::PopItemWidth();
-		ImGui::Text(ErrorMsg.c_str());
-
-		
-
-
-		// Toggles between Sending Mouse Coordinates or Text.
-		if (m_MouseMode) {
-			ImGui::Begin("Control Panel");
-			DrawRetroMousePad();
-			ImGui::End();
-
-
-			ImGui::Text("Hold Left Click over the image to Send coords!");
-			ImVec2 imagePos = ImGui::GetCursorScreenPos();
-			ImGui::Image(m_Image->GetDescriptorSet(), { 400, 400 });
-
-
-			ImVec2 pos = ImGui::GetMousePos();
-			// Position of mouse cursor relative to image, then scaled by 180 degrees of rotation for the servo motor.
-			ImVec2 relativePos = ImVec2((pos.x - imagePos.x) / (m_Image->GetHeight() / 180), (pos.y - imagePos.y) / (m_Image->GetWidth() / 180));
-			ImGui::Text("Coords are sent over serial as: (X%uY%u)", (int)relativePos.x, (int)relativePos.y);
-
-
-			// Basically, you hold left click while cursor is over the image.
-			 
-
-		}
-		else {	// Send Text to Serial.
-
-			// Read from COM port.
-			if (!m_NetworkMode) {
-				unsigned char buffer[128];
-				int n = RS232_PollComport(m_ComPorts.at(m_SelectedPort) - 1, buffer, 128);
-
-				if (n > 0)
-				{
-					printf("\nreceived %i bytes: %s\n", n, (char*)buffer);
-					m_Out += "\n [+] ";
-					for (int i = 0; i < n; i++) { 
-						m_Out += buffer[i]; // I think each frame is messing with my buffers.
-						// I seperated them so its not constant garbage.
-					}
-					m_Out += "\n";
-
-					
-					Out += m_Out; // This makes me upset. TODO: make that damn buffer class
-					
-					m_Out = "";
-				}
-				memset(buffer, 0, sizeof buffer);
-
-			}
-			else {
-				// RECIEVE THREAD SHOULD POPULATE 
-
-				std::unique_lock<std::mutex> lock(queueMutex); // Make sure no thread is overwriting what i want to read
-				//queueCV.wait(lock, [] { return !messageQueue.empty() || stopThreads; }); // Wait for data to be available in the buffer
-				std::string message;
-					// Check if new data is available
-				if (!messageQueue.empty()) {
-					// Get the message from the buffer
-					message = messageQueue.front();
-					messageQueue.pop();
-				}
-				//queueMutex.unlock(); //auto released when out of scope.
-				//m_Out = Out;
-				
-
-			}
-			
-			ImGui::Text("Serial Comunication.\tCurrent Mode: ");
-			if (m_NetworkMode) {
-				ImGui::SameLine();
-				ImGui::Text("Network Mode");
-			}
-			else {
-				ImGui::SameLine();
-				ImGui::Text("Serial Mode!");
-				
-			}
-			std::string porttext = "Selected Port: COM" + std::to_string(m_ComPorts.at(m_SelectedPort));
-			ImGui::Text(porttext.c_str());
-
-
-			ImGui::Text("Input:");
-			//ImGui::InputText("##Text", m_UserInput, IM_ARRAYSIZE(m_UserInput));
-			ImGui::InputText("##Text", m_UserInput, 128); // Set limit for buffer debug purposes
-			//printf("\n%.*s", 128, m_UserInput);
-			ImGui::SameLine();
-			int i = 0;
-			char sendBuffer[130]; // 128 + \n + \0
-			if (ImGui::Button("Send")) {
-				int len = strlen(m_UserInput); // safer than looping
-				char sendBuffer[130]; // 128 + \n + \0
-				memcpy(sendBuffer, m_UserInput, len);
-				sendBuffer[len] = '\n';  // newline to trigger Arduino parsing
-				sendBuffer[len + 1] = '\0';
-				
-
-
-				//int i;
-				//for (i = 0; i < 128; i++) {
-				//	if (m_UserInput[i] == '\0') { // find index of end of null terminated string
-				//		printf("\nFound \\0 at end, %d", i);
-				//		break;
-				//	}
-				//	if (m_UserInput[i] == '\n') {
-				//		printf("\nFound \\n at end, %d", i);
-				//		break;
-				//	}
-				//}
-				//m_UserInput[i] = '\n';
-				//m_UserInput[i + 1] = '\0';
-				printf("\n%d byte DUMP:", len+1);
-				printf("\n%.*s", len+1, sendBuffer);
-				printf("\n%d byte DUMP (HEX):", len + 1);
-				for (int j = 0; j < len + 1; j++) {
-					printf(" %02X", (unsigned char)sendBuffer[j]);
-				}
-				printf("\n");
-
-				// We have user input, send over user selected protocol
-				if (!m_NetworkMode) {
-					// Write to COM port.
-					//int e = RS232_SendBuf(m_ComPorts.at(m_SelectedPort) - 1, reinterpret_cast<unsigned char*>(m_UserInput), i+1);
-					int result = RS232_SendBuf(m_ComPorts.at(m_SelectedPort)-1, reinterpret_cast<unsigned char*>(sendBuffer), len + 1);
-					//RS232_cputs((m_ComPorts.at(m_SelectedPort) - 1), m_UserInput);
-					
-					if (result < 0) {
-						printf("\nWriting failed! Port: %d", m_ComPorts.at(m_SelectedPort) );
-						printf("\n%.*s", len, sendBuffer);
-					}
-					printf("\nWrote %d bytes on Comport %d", result, m_ComPorts.at(m_SelectedPort));
-					
-				}
-				else {
-					// TODO: Send Text to Server.
-					//send(ConnectSocket, m_UserInput, i, 0);
-					std::lock_guard<std::mutex> lock(queueMutex);
-					messageQueue.push(m_UserInput);
-
-				}
-				memset(m_UserInput, 0, sizeof(m_UserInput)); // clear the user input buffer after sending.
-
-				Out += "\n[+] Sent: ";
-				Out += sendBuffer; // This is the "console window" in Text Mode.
-			}
-
-			ImGui::SameLine();
-			if (ImGui::Button("Clear Buffer")) {
-				Out = ""; // This is the "console window" in Text Mode.
-				memset(m_UserInput, 0, sizeof(m_UserInput)); // IDK why but sometimes i have garbage chars in here. 
-			}
-			ImGui::BeginChild("##Text Box", ImVec2(400, 300), true, ImGuiWindowFlags_NoScrollbar);
-			ImGui::Text(Out.c_str()); 
-			ImGui::EndChild();
-
-		}
-
-		ImGui::End();
-
-	}
-	
-	
-	
-	*/
-
-
-
-
-
-
 
 public:
 	static char* m_UserInput; // Obligatory buffer for user input.
@@ -2045,7 +1208,7 @@ private:
 
 
 
-	std::shared_ptr<Walnut::Image> m_Image; // When playing with Walnut, i had an AI gen'd image of Giygas from Earthbound. This is it.
+	std::shared_ptr<Walnut::Image> m_Image; 
 	static std::string m_Out; // This is the backgroud buffer that will eventually get written to the forward buffer on screen.
 	std::string ErrorMsg; // For telling the user they probably selected the wrong com port. could be a popup? annoying
 	int m_SelectedPort = 0;
@@ -2056,8 +1219,6 @@ private:
 };
 
 // Shameful Global variables. Unresolved external symbol error happens if I don't have this here. There's probably a better way.
-
-//char* ExampleLayer::m_UserInput = new char[128](); //nullptr;
 char* ExampleLayer::m_UserInput = new char[128]();
 std::string ExampleLayer::m_Out; // Cherno would smite me for this.
 //int globalport; // m_SelectedPort isnt accessible when file->close is called. Cherno's gonna hit me over the head with a chair for this
