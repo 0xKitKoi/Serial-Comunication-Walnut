@@ -12,3 +12,5 @@ bin-int/
 # Exclude
 !vendor/bin
 /WalnutApp/Settings.txt
+/WalnutApp/ScuzzyClientLog.txt
+/WalnutApp/imgui.ini
