@@ -1,18 +1,14 @@
 # Serial Monitor with Networking Capabilities
 
 This is Client built with [Walnut](https://github.com/TheCherno/Walnut) - It's a serial monitor at heart, but mixed with NetCat and can also send mouse coordinates.
-A serial monitor is a program that sends and listens for data over USB lines via the [RS-232 Protocol](https://en.wikipedia.org/wiki/Serial_port) and is a very simple way to send commands to microcontrollers like an [Arduino](https://www.arduino.cc/)
-#
-If you Do Not have a microcontroller, that is OK! This program can also act like NetCat to send raw text to servers, though the entire point of this project is for serial communication. 
-#
-I built this program for another project that makes [Michael Reevee's](https://youtu.be/_P24em7Auq0?si=aHVvcCby17MTgddT) Laser Turret Wireless. This Project uses two Raspberry Pi Pico W's to acomplish this. This Program (the serial monitor), I'll call the TurretController, sends commands to a microcontroller (In my case a pico w) connected to the computer via USB Serial Ports. That Pico then either is the turret directly plugged in, or is a medium to connect to the turret wirelessly using raw sockets, Bluetooth, or NRF24l01 modules. Firmware for all of these are in the Examples folder. The Turret will connect to the microcontroller attached to your PC to parse commands. The turret controls Servo Motors to move the Laser, or an LCD/OLED Screen. This setup allows the Laser Turret System to be anywhere in the room, or be controlled remotely anywhere in the world. It uses [this library](https://gitlab.com/Teuniz/RS-232) to communicate over serial ports, and is multiplatform. Raw sockets are used for Networking, and all other communications like bluetooth and radio are sent over serial port to a microcontroller to act as the medium. (This will take nrf24 modules or the like)
+A Serial Monitor communicates with a device over COM Ports or Serial Ports. It does this over the RS-232 Protocol. This is very useful for people like me who commonly interface with Microcontrollers. 
+This application also has the ability to send data to a server instead, and this is cool because some microcontrollers have WiFi chips in them as well. I use this alot in my MakerSpace Club with my team. 
+
+At first, This project was intended to make [Michael Reevee's](https://youtu.be/_P24em7Auq0?si=aHVvcCby17MTgddT) Laser Turret Wireless. This Project uses two Raspberry Pi Pico W's to acomplish this. This Client, I'll call the TurretController, sends commands to a microcontroller (In my case a pico w) connected to the computer via USB Serial Ports. That Pico then either is the turret directly plugged in, or is a medium to connect to the turret wirelessly using raw sockets, Bluetooth, or NRF24l01 modules. Firmware for all of these are in the Examples folder. The Turret will connect to the microcontroller attached to your PC to parse commands. The turret controls Servo Motors to move the Laser, or an LCD/OLED Screen. This setup allows the Laser Turret System to be anywhere in the room, or be controlled remotely anywhere in the world. It uses [this library](https://gitlab.com/Teuniz/RS-232) to communicate over serial ports, and is multiplatform. Raw sockets are used for Networking, and all other communications like bluetooth and radio are sent over serial port to a microcontroller to act as the medium. (This will take nrf24 modules or the like)
 
 ## Screenshots
 ![Main Page](https://github.com/0xKitKoi/Serial-Comunication-Walnut/blob/master/EXAMPLES/Images/Screenshot.png)
 <img src="https://github.com/0xKitKoi/Serial-Comunication-Walnut/blob/master/EXAMPLES/Images/Demo.gif" width="400" height="500"/>
-### Retro Theme Coming Soon
-<img src="https://github.com/0xKitKoi/Serial-Comunication-Walnut/blob/master/EXAMPLES/Images/comingsoon.gif" width="800" height="500"/>
-
 
 
 ## Getting Started
@@ -27,7 +23,7 @@ By default, the application is set to text mode. this will allow the user to sel
 You can also send data to a microcontroller over WiFi. In the settings there is an IP and PORT text box. This is assuming the microcontroller is set up to be the server, and the client will attempt to connect and send data. 
 
 # Mouse Mode
-This project was intended to be a remake of Michael Reevee's laser turret software he wrote in C# using WinForms. In his [video](https://www.youtube.com/watch?v=_P24em7Auq0), He shows how to pipe mouse coordinates over to the microcontroller to parse, which the microcontroller then uses to control 2 servo motors for Pan and Tilt, all to aim a small laser diode. Selecting mouse mode in my application will display an image to act as our mouse pad. Holding left click will continuously send the mouse coordinates to the selected communication mode, whether that be a com port or an IP address. The structure of the char buffer being sent is as follows:
+This project was intended to be a remake of Michael Reevee's laser turret software he wrote in C# using WinForms. In his video (Link attached), He shows how to pipe mouse coordinates over to the microcontroller to parse, which the microcontroller then uses to control 2 servo motors for Pan and Tilt, all to aim a small laser diode. Selecting mouse mode in my application will display an image to act as our mouse pad. Holding left click will continuously send the mouse coordinates to the selected communication mode, whether that be a com port or an IP address. The structure of the char buffer being sent is as follows:
 
 # Mouse Mode Raw Buffer Structure
 ```"\X(INT)Y(INT)\n0"``` \
