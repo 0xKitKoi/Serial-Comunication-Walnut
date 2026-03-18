@@ -53,6 +53,11 @@ bool connectionAquired = false;
 bool stopThreads = false; // Flag to signal networking threads to stop
 bool showPopup = false; // about window.
 bool OpenSettings = false;
+
+
+double IN_flashStartTime = 0.0;
+double OUT_flashStartTime = 0.0;
+const double FLASH_DURATION = 5.0; // seconds
 bool inputTriggerLED = false;
 bool outputTriggerLED = false;
 
@@ -77,9 +82,10 @@ DWORD WINAPI receiveThread(LPVOID lpParam) {
 	char buffer[1024];
 	int bytesReceived;
 	while (!stopThreads) {
-		inputTriggerLED = false;
+		//inputTriggerLED = false;
 		bytesReceived = recv(clientSocket, buffer, sizeof(buffer) - 1, 0);
 		if (bytesReceived > 0) {
+			IN_flashStartTime = ImGui::GetTime(); // start input LED flash timer
 			buffer[bytesReceived] = '\0'; // Null-terminate the received data
 			// echo back by signaling the send thread.
 			//std::lock_guard<std::mutex> lock(queueMutex);
@@ -94,7 +100,7 @@ DWORD WINAPI receiveThread(LPVOID lpParam) {
 			
 		}
 		else {
-			inputTriggerLED = false;
+			//inputTriggerLED = false;
 			break;
 		}
 	}
@@ -111,7 +117,7 @@ DWORD WINAPI receiveThread(LPVOID lpParam) {
 DWORD WINAPI sendThread(LPVOID lpParam) {
 	SOCKET clientSocket = reinterpret_cast<SOCKET>(lpParam);
 	while (!stopThreads) {
-		outputTriggerLED = false;
+		//outputTriggerLED = false;
 		std::unique_lock<std::mutex> lock(queueMutex);
 		queueCV.wait(lock, [] { return !messageQueue.empty() || stopThreads; });
 
@@ -122,13 +128,14 @@ DWORD WINAPI sendThread(LPVOID lpParam) {
 		messageQueue.pop();
 		// No need to manually unlock; optional, but clean:
 		lock.unlock();
-
+		OUT_flashStartTime = ImGui::GetTime(); // start output LED flash timer
 		int bytes = send(clientSocket, message.c_str(),
 			static_cast<int>(message.length()), 0);
 		if (bytes == SOCKET_ERROR) {
 			printf("Send failed %d\n", WSAGetLastError());
 			console.appendf("[-] Send failed %d\n", WSAGetLastError());
 			scrollToBottom = true;
+			outputTriggerLED = false; // light up output LED on failure
 		}
 		else {
 			printf("Sent %d bytes: %s\n", bytes, message.c_str());
@@ -638,6 +645,7 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 					console.appendf("[-] Error sending data over serial port.\n");
 					scrollToBottom = true;
 					outputTriggerLED = false;
+					isComPortConnected = false;
 				}
 			}
 
@@ -774,10 +782,12 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 						ErrorMsg = "Can not open comport COM" + std::to_string(m_ComPorts.at(m_SelectedPort) - 1);
 						console.appendf("[-] Error: %s\n", ErrorMsg.c_str());
 						scrollToBottom = true;
+						isComPortConnected = false;
 					}
 					printf("Connected to com port: %d", m_ComPorts.at(m_SelectedPort));
 					console.appendf("[+] Connected to com port: COM%d\n", m_ComPorts.at(m_SelectedPort));
 					scrollToBottom = true;
+					isComPortConnected = true;
 
 				}
 
@@ -856,10 +866,29 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 		if (showPopup) OpenAbout();
 
 		// Status LEDs, intentional delay on input LED to simulate processing time
-		if (outputTriggerLED) { comPortHasOutput = true;  }
-		else { comPortHasOutput = false; }
-		if (inputTriggerLED) { comPortHasInput = true; }
-		else { comPortHasInput = false; }
+		
+		if (outputTriggerLED) {
+			comPortHasOutput = true;
+			printf("%f", (ImGui::GetTime() - OUT_flashStartTime));
+			if ((ImGui::GetTime() - OUT_flashStartTime) >= FLASH_DURATION) {
+				outputTriggerLED = false;
+				comPortHasOutput = false;
+				OUT_flashStartTime = 0.0f; // reset timer
+			}
+		}
+		if (inputTriggerLED) {
+			comPortHasInput = true;
+			if ((ImGui::GetTime() - IN_flashStartTime) >= FLASH_DURATION) {
+				inputTriggerLED = false;
+				comPortHasInput = false;
+				IN_flashStartTime = 0.0f; // reset timer
+			}
+		}
+
+		//if (outputTriggerLED) { comPortHasOutput = true;  }
+		//else { comPortHasOutput = false; }
+		//if (inputTriggerLED) { comPortHasInput = true; }
+		//else { comPortHasInput = false; }
 
 		// Network / Serial Toggle
 		ImGui::Text("Sending All Data over Mode: ");
@@ -878,6 +907,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 					connectionAquired = false;                   // reset connection flag
 					console.appendf("[-] Invalid Socket Passed into Networking Threads! wow!");
 					scrollToBottom = true;
+					isNetworkConnected = false;
 				}
 
 
@@ -964,8 +994,10 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 
 		DrawRetroStatusLED("Networking",isNetworkConnected,  indicatorStart);
 		DrawRetroStatusLED("COMs", isComPortConnected, ImVec2(indicatorStart.x, indicatorStart.y + 25));
-		DrawRetroStatusLED("COM In", comPortHasInput, ImVec2(indicatorStart.x, indicatorStart.y + 50));
-		DrawRetroStatusLED("COM Out", comPortHasOutput, ImVec2(indicatorStart.x, indicatorStart.y + 75));
+		/*DrawRetroStatusLED("COM In", comPortHasInput, ImVec2(indicatorStart.x, indicatorStart.y + 50));*/
+		DrawRetroStatusLED("COM In", inputTriggerLED, ImVec2(indicatorStart.x, indicatorStart.y + 50));
+		/*DrawRetroStatusLED("COM Out", comPortHasOutput, ImVec2(indicatorStart.x, indicatorStart.y + 75));*/
+		DrawRetroStatusLED("COM Out", outputTriggerLED, ImVec2(indicatorStart.x, indicatorStart.y + 75));
 
 		// Use Dummy to push the cursor so the next widgets don't overlap
 		ImGui::Dummy(ImVec2(150, 80)); // reserve space
@@ -1005,6 +1037,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 						console.appendf("[-] ERROR Scanning COM Ports: [%d]\n", ::GetLastError());
 						scrollToBottom = true;
 						ErrorMsg = "ERROR: " + std::to_string(::GetLastError());
+						isComPortConnected = false;
 					}
 
 				}
@@ -1024,10 +1057,12 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 					ErrorMsg = "Can not open comport COM" + std::to_string(m_ComPorts.at(m_SelectedPort) - 1);
 					console.appendf("[-] Cannot open comport COM%i\n", m_ComPorts.at(m_SelectedPort) - 1);
 					scrollToBottom = true;
+					isComPortConnected = false;
 				}
 				printf("Connected to com port: %d", m_ComPorts.at(m_SelectedPort));
 				console.appendf("[+] Connected to com port: %d\n", m_ComPorts.at(m_SelectedPort)-1);
 				scrollToBottom = true;
+				isComPortConnected = true;
 
 			}
 			ImGui::EndChild();
@@ -1105,18 +1140,58 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 				//}
 				//m_UserInput[i] = '\n';
 				//m_UserInput[i + 1] = '\0';
-				printf("\n%d byte DUMP:", len + 1);
-				console.appendf("\n%d byte DUMP:", len + 1);
-				printf("\n%.*s", len + 1, sendBuffer);
-				console.appendf("\n%.*s", len + 1, sendBuffer);
-				printf("\n%d byte DUMP (HEX):", len + 1);
-				console.appendf("\n%d byte DUMP (HEX):", len + 1);
-				for (int j = 0; j < len + 1; j++) {
-					printf(" %02X", (unsigned char)sendBuffer[j]);
-					console.appendf(" %02X", (unsigned char)sendBuffer[j]);
+
+				// hexdump time. 
+				console.appendf("  **  HEX DUMP  **\n");
+				const int COLS = 8;
+				console.appendf("___________________________________\n");
+				console.appendf("00 01 02 03 04 05 06 07  | ascii  |\n");
+				//// header
+				//for (int c = 0; c < COLS; c++) {
+				//	printf("%s%02X", c ? " " : "", c);
+				//	console.appendf("%s%02X", c ? " " : "", c);
+				//}
+				//printf("  |");
+				//console.appendf("  |");
+				//for (int c = 0; c < COLS; c++) {
+				//	printf("%X", c);
+				//	console.appendf("%X", c);
+				//}
+				//printf("|\n");
+				//console.appendf("|\n");
+
+				for (int i = 0; i < len; i += COLS) {
+					for (int j = 0; j < COLS; j++) {
+						unsigned char b = (i + j < len) ? (unsigned char)sendBuffer[i + j] : 0x00;
+						printf("%s%02X", j ? " " : "", b);
+						console.appendf("%s%02X", j ? " " : "", b);
+					}
+					printf("  |");
+					console.appendf("  |");
+					for (int j = 0; j < COLS; j++) {
+						unsigned char b = (i + j < len) ? (unsigned char)sendBuffer[i + j] : 0x00;
+						char ch = (i + j < len) ? ((b >= 32 && b < 127) ? b : '.') : '0';
+						printf("%c", ch);
+						console.appendf("%c", ch);
+					}
+					printf("|\n");
+					console.appendf("|\n");
 				}
-				printf("\n");
-				console.appendf("\n");
+
+
+
+				//printf("\n%d byte DUMP:", len + 1);
+				//console.appendf("\n%d byte DUMP:", len + 1);
+				//printf("\n%.*s", len + 1, sendBuffer);
+				//console.appendf("\n%.*s", len + 1, sendBuffer);
+				//printf("\n%d byte DUMP (HEX):", len + 1);
+				//console.appendf("\n%d byte DUMP (HEX):", len + 1);
+				//for (int j = 0; j < len + 1; j++) {
+				//	printf(" %02X", (unsigned char)sendBuffer[j]);
+				//	console.appendf(" %02X", (unsigned char)sendBuffer[j]);
+				//}
+				//printf("\n");
+				//console.appendf("\n");
 				scrollToBottom = true;
 
 				// We have user input, send over user selected protocol
@@ -1132,8 +1207,10 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 						printf("\n%.*s", len, sendBuffer);
 						console.appendf("\n%.*s", len, sendBuffer);
 						scrollToBottom = true;
+						comPortHasOutput = false; 
 					}
 					printf("\nWrote %d bytes on Comport %d", result, m_ComPorts.at(m_SelectedPort));
+					comPortHasOutput = true;
 
 				}
 				else {
@@ -1142,6 +1219,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 					std::lock_guard<std::mutex> lock(queueMutex);
 					messageQueue.push(m_UserInput);
 					queueCV.notify_one();
+					isNetworkConnected = true;
 
 				}
 				memset(m_UserInput, 0, sizeof(m_UserInput)); // clear the user input buffer after sending.
@@ -1166,12 +1244,21 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 				memset(m_UserInput, 0, 128);
 			}
 
-			ImGui::BeginChild("Console", ImVec2(0, 300), true, ImGuiWindowFlags_HorizontalScrollbar);
-			//ImGui::TextUnformatted(Out.c_str());
+			//ImGui::BeginChild("Console", ImVec2(0, 300), true, ImGuiWindowFlags_HorizontalScrollbar);
+			////ImGui::TextUnformatted(Out.c_str());
 
+			//ImGui::TextUnformatted(console.begin(), console.end());
+			//if (scrollToBottom)
+			//	ImGui::SetScrollHereY(1.0f); // 1.0 = bottom
+			//scrollToBottom = false;
+			//ImGui::EndChild();
+			ImGui::BeginChild("Console", ImVec2(0, 300), true, ImGuiWindowFlags_HorizontalScrollbar);
+			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.65f, 0.0f, 1.0f));
+			//colors[ImGuiCol_Border] = ImVec4(1.0f, 0.65f, 0.0f, 1.0f); // Orange (RGB: 255, 165, 0)
 			ImGui::TextUnformatted(console.begin(), console.end());
+			ImGui::PopStyleColor();
 			if (scrollToBottom)
-				ImGui::SetScrollHereY(1.0f); // 1.0 = bottom
+				ImGui::SetScrollHereY(1.0f);
 			scrollToBottom = false;
 			ImGui::EndChild();
 

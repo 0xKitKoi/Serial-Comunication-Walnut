@@ -14,7 +14,7 @@ At first, This project was intended to make [Michael Reevee's](https://youtu.be/
 
 
 ## Getting Started
-Clone with:```git clone --recursive https://github.com/0xKitKoi/Serial-Comunication-Walnut ``` Once you've cloned, run `scripts/Setup.bat` to generate Visual Studio 2022 solution/project files. The app is located in the `WalnutApp/` directory. 
+[Walnut]() is made by [TheCherno](https://www.youtube.com/watch?v=5zS-DZhCA2g), and depends on the [VULKAN SDK](https://vulkan.lunarg.com/sdk/home). Install it. Clone with:```git clone --recursive https://github.com/0xKitKoi/Serial-Comunication-Walnut ``` Once you've cloned, run `scripts/Setup.bat` to generate Visual Studio 2022 solution/project files. The app is located in the `WalnutApp/` directory. 
 
 ## EXAMPLES / MICROCONTROLLERS
 I've included the firmware I used for the Laser Turret in the MicroController Firmware folder, which you will find in EXAMPLES. Examples include Driving the servo motors for the laser turret, and displaying text/animations. This project revolves around the Desktop Application communicating with a microcontroller, but a simple WiFi Echo Server written in C is also included if you wanted to play around. SEE EXAMPLES FOLDER
