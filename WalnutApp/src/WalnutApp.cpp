@@ -4,9 +4,11 @@
 #include "Walnut/Image.h"
 
 #include <thread>
+#include <chrono>
 #include "rs232.h" // Cross platform wrapper for USB Serial Com. https://gitlab.com/Teuniz/RS-232.git
 
 #include <stdio.h>
+#include <errno.h>
 #pragma comment(lib, "Ws2_32.lib")
 
 
@@ -53,7 +55,13 @@ bool connectionAquired = false;
 bool stopThreads = false; // Flag to signal networking threads to stop
 bool showPopup = false; // about window.
 bool OpenSettings = false;
+bool g_IsDropdownOpen = false;
+int m_OpenComPort = -1;
 
+// Background thread for polling serial port
+std::thread g_SerialPollThread;
+
+bool debugMode = false;
 
 double IN_flashStartTime = 0.0;
 double OUT_flashStartTime = 0.0;
@@ -69,7 +77,7 @@ static bool scrollToBottom = false;
 struct SaveData { // Default settings. Change to Microcontroller/Server IP:PORT
 	std::string ipAddress = "127.0.0.1";
 	int port = 5000;
-	int baudrate = 9600; // Default baudrate for serial communication
+	int baudrate = 115200; // Default baudrate for serial communication
 }m_SaveData;
 
 /// <summary>
@@ -93,9 +101,11 @@ DWORD WINAPI receiveThread(LPVOID lpParam) {
 			//queueCV.notify_one();
 			if (connectionAquired) {
 				Out.append("\n [+] " + std::string(buffer));
-				console.appendf("[+] RECEIVED: %s\n", buffer);
+				console.appendf("\n[+] RECEIVED: %s\n", buffer);
 				scrollToBottom = true;
 			}
+
+
 			inputTriggerLED = true; // light up input LED on data recv
 			
 		}
@@ -108,6 +118,57 @@ DWORD WINAPI receiveThread(LPVOID lpParam) {
 	//detete[] buffer;
 	return 0;
 }
+
+
+
+/*
+
+// Continuously print anything the Pico sends
+DWORD WINAPI receiver_thread(LPVOID arg) {
+	unsigned char buf[1024];
+	while (running) {
+		int n = RS232_PollComport(cport_nr, buf, sizeof(buf) - 1);
+		if (n > 0) {
+			buf[n] = '\0';
+			printf("<< %s", (char*)buf);
+			fflush(stdout);
+		}
+		Sleep(10);
+	}
+	return 0;
+}
+*/
+
+
+// Background serial polling loop. Calls RS232_PollComport on the opened port and
+// forwards incoming bytes to the UI console buffer.
+void serialPollLoop()
+{
+	const int BUF_SIZE = 1024;
+	std::vector<unsigned char> buf(BUF_SIZE);
+	while (!stopThreads) {
+		if (m_OpenComPort != -1) {
+			int n = RS232_PollComport(m_OpenComPort, buf.data(), BUF_SIZE-1);
+			if (n > 0) {
+				buf[n] = '\0';
+				std::string s(reinterpret_cast<char*>(buf.data()), n);
+				IN_flashStartTime = ImGui::GetTime();
+				Out.append("\n [+] " + s);
+				console.appendf("[+] RECEIVED: %s\n", s.c_str());
+				scrollToBottom = true;
+				inputTriggerLED = true;
+				fflush(stdout);
+			}
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+	return;
+}
+
+
+
+
+
 
 /// <summary>
 /// Networking Send Thread. Waits for messages to be available in the message queue, then sends them to the server specified in settings.
@@ -321,8 +382,12 @@ public:
 		m_UserInput = nullptr;
 		stopThreads = true;
 
-		// Notify the sending thread to wake up and check the stopThreads flag
+      // Notify the sending thread to wake up and check the stopThreads flag
 		queueCV.notify_one();
+
+		// Stop and join serial poll thread
+		stopThreads = true;
+		if (g_SerialPollThread.joinable()) g_SerialPollThread.join();
 
 		// Join the threads // replaced with bool flag for stopping.
 		//hReadThread.join();
@@ -622,7 +687,7 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 			// send m_MouseX and m_MouseY over selected communication mode here.
 			if (m_NetworkMode) {
 				// send over network
-				std::string message = "\\X" + std::to_string((int)m_MouseX) + "Y" + std::to_string((int)m_MouseY);
+				std::string message = "\\X" + std::to_string((int)m_MouseX) + "Y" + std::to_string((int)m_MouseY) + "\r\n";
 				// populate Message Queue and notify sending thread
 				{
 					//send(ConnectSocket, m_UserInput, i, 0); // Blocking
@@ -633,7 +698,7 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 			}
 			else { // Serial Mode
 				std::string msg = "\\X" + std::to_string((int)m_MouseX) +
-					"Y" + std::to_string((int)m_MouseY);
+					"Y" + std::to_string((int)m_MouseY) + "\r\n";
 
 				std::vector<unsigned char> buf(msg.begin(), msg.end()); // mutable
 
@@ -671,12 +736,11 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 
 
 
-	// Returns true if selection changed.
+    // Returns true if selection changed.
 	/// dropdown menu for com ports
 	bool CustomTrapezoidDropdown(const char* label, const std::vector<int>& items, int& selectedIndex)
 	{
-		static bool isOpen = false;
-		ImDrawList* draw_list = ImGui::GetWindowDrawList();
+     ImDrawList* draw_list = ImGui::GetWindowDrawList();
 		ImVec2 pos = ImGui::GetCursorScreenPos();
 
 		// Dimensions
@@ -684,7 +748,7 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 		float width = 200.0f;
 		float dropdownMaxHeight = 150.0f;
 
-		// Define trapezoid corners
+		// Define trapezoid corners (visual only)
 		ImVec2 tabTopLeft = pos;
 		ImVec2 tabTopRight = ImVec2(pos.x + width - 20, pos.y);
 		ImVec2 tabBottomRight = ImVec2(pos.x + width, pos.y + tabHeight);
@@ -694,118 +758,97 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 		ImU32 tabFillColor = IM_COL32(0, 0, 0, 255); // solid black fill
 		ImVec2 tabPoints[4] = { tabTopLeft, tabTopRight, tabBottomRight, tabBottomLeft };
 		draw_list->AddConvexPolyFilled(tabPoints, IM_ARRAYSIZE(tabPoints), tabFillColor);
-		for (int i = 2; i >= 0; --i)
+		for (int g = 2; g >= 0; --g)
 		{
-			float thickness = 1.5f + i * 1.2f;
-			ImU32 glowColor = IM_COL32(255, 255, 100, 60 - i * 15);
+			float thickness = 1.5f + g * 1.2f;
+			ImU32 glowColor = IM_COL32(255, 255, 100, 60 - g * 15);
 			draw_list->AddPolyline(tabPoints, IM_ARRAYSIZE(tabPoints), glowColor, true, thickness);
 		}
 		ImVec2 textSize = ImGui::CalcTextSize(label);
 		ImVec2 tabtextPos = ImVec2(pos.x + (width - textSize.x) * 0.5f, pos.y + (tabHeight - textSize.y) * 0.5f);
 		draw_list->AddText(tabtextPos, IM_COL32(255, 255, 255, 255), label);
 
-
-		// Detect hover and click on trapezoid tab
-		ImVec2 tabMin = tabTopLeft;
-		ImVec2 tabMax = tabBottomRight;
-		bool hovered = ImGui::IsMouseHoveringRect(tabMin, tabMax);
-		bool clicked = hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
-
-		if (clicked)
-		{
-			isOpen = !isOpen;
-		}
-
 		bool selectionChanged = false;
 
-		if (isOpen)
-		{
-			ImVec2 dropdownPos = ImVec2(pos.x, pos.y + tabHeight);
-			ImVec2 dropdownSize = ImVec2(width, dropdownMaxHeight);
+		std::string popup_id = std::string("##trapezoid_popup_") + label;
 
-			
-			for (int i = 0; i < 3; ++i)
-			{
-				ImU32 glowColor = IM_COL32(255, 255, 100, 60 - i * 15); // yellowish glow
-				draw_list->AddRect(dropdownPos, ImVec2(dropdownPos.x + dropdownSize.x, dropdownPos.y + dropdownSize.y), glowColor, 6.0f, 0, 2.0f + i * 1.5f);
+		// Invisible button to receive clicks on trapezoid
+		ImGui::SetCursorScreenPos(pos);
+		ImGui::InvisibleButton((std::string("##trapezoid_btn_") + label).c_str(), ImVec2(width, tabHeight));
+		if (ImGui::IsItemClicked()) {
+			ImGui::OpenPopup(popup_id.c_str());
+			// debug log
+			if (items.empty()) console.appendf("[-] Dropdown opened: no COM ports detected\n");
+			else {
+				console.appendf("[+] Dropdown opened:\n");
+				for (size_t di = 0; di < items.size(); ++di) console.appendf("  idx=%zu -> COM%d\n", di, items[di]);
 			}
-
-
-			ImVec2 offsetPos = ImVec2(dropdownPos.x + 4, dropdownPos.y + 4);
-			ImVec2 childSize = ImVec2(dropdownSize.x - 8, dropdownSize.y - 8);
-
-			ImGui::SetCursorScreenPos(offsetPos);
-
-			std::string child_id = std::string("##") + label + "_List";
-			ImGui::BeginChild(child_id.c_str(), childSize, false);
-
-
-			for (int i = 0; i < (int)items.size(); i++)
-			{
-				bool isSelected = (m_SelectedPort == i);
-				int portNum = m_ComPorts[i];
-				std::string item = "COM" + std::to_string(portNum);
-
-				ImVec4 normalColor = ImVec4(1.0f, 1.0f, 0.6f, 1.0f);    // pale yellow text
-				ImVec4 hoverColor = ImVec4(1.0f, 1.0f, 0.3f, 1.0f);     // bright neon yellow
-				ImVec4 selectColor = ImVec4(1.0f, 0.8f, 0.2f, 1.0f);    // deeper yellow for selected
-
-				ImGui::PushStyleColor(ImGuiCol_Text, isSelected ? selectColor : normalColor);
-
-				// Draw custom background for hovered item
-				if (ImGui::IsItemHovered() || isSelected)
-				{
-					ImDrawList* dl = ImGui::GetWindowDrawList();
-					ImVec2 itemMin = ImGui::GetItemRectMin();
-					ImVec2 itemMax = ImGui::GetItemRectMax();
-
-					// neon glow outline rectangle
-					for (int glowStep = 0; glowStep < 3; glowStep++) {
-						ImU32 glowCol = ImGui::GetColorU32(ImVec4(1.0f, 1.0f, 0.3f, 0.3f - glowStep * 0.1f));
-						dl->AddRect(ImVec2(itemMin.x - glowStep, itemMin.y - glowStep), ImVec2(itemMax.x + glowStep, itemMax.y + glowStep), glowCol, 4.0f, 0, 2.0f);
-					}
-
-					// fill background
-					dl->AddRectFilled(itemMin, itemMax, IM_COL32(30, 30, 10, 150), 4.0f);
-				}
-
-				if (ImGui::Selectable(item.c_str(), isSelected)) {
-					m_SelectedPort = i;
-					isOpen = false;
-					selectionChanged = true;
-					// your connect logic here
-					char mode[] = { '8','N','1',0 }; // Serial port config. this sets bit mode & parity, and I don't think this EVER changes. 
-
-					if (RS232_OpenComport(m_ComPorts.at(m_SelectedPort) - 1, m_SaveData.baudrate, mode, 0)) // (ComPort, Baudrate, mode, flowcontrol)
-					{
-						//printf("Can not open comport COM%i\n", m_ComPorts.at(m_SelectedPort));
-						ErrorMsg = "Can not open comport COM" + std::to_string(m_ComPorts.at(m_SelectedPort) - 1);
-						console.appendf("[-] Error: %s\n", ErrorMsg.c_str());
-						scrollToBottom = true;
-						isComPortConnected = false;
-					}
-					printf("Connected to com port: %d", m_ComPorts.at(m_SelectedPort));
-					console.appendf("[+] Connected to com port: COM%d\n", m_ComPorts.at(m_SelectedPort));
-					scrollToBottom = true;
-					isComPortConnected = true;
-
-				}
-
-				ImGui::PopStyleColor();
-			}
-
-
-			ImGui::EndChild();
-
-			// Close dropdown if clicked outside
-			if (ImGui::IsMouseClicked(0) && !hovered && !ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow))
-			{
-				isOpen = false;
-			}
+			scrollToBottom = true;
 		}
 
-		ImGui::SetCursorScreenPos(ImVec2(pos.x, pos.y + tabHeight + (isOpen ? dropdownMaxHeight : 0)));
+		// Position popup under trapezoid and make background transparent so trapezoid shows through
+		ImVec2 dropdownPos = ImVec2(pos.x, pos.y + tabHeight);
+		ImGui::SetNextWindowPos(dropdownPos);
+		ImGui::SetNextWindowSize(ImVec2(width, dropdownMaxHeight));
+		ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(0.01f, 0.01f, 0.01f, 0.9f));
+		ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.01f, 0.01f, 0.01f, 0.0f));
+		if (ImGui::BeginPopup(popup_id.c_str(), ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove)) {
+			ImGui::BeginChild((popup_id + std::string("_child")).c_str(), ImVec2(width, dropdownMaxHeight), false, ImGuiWindowFlags_NoScrollWithMouse);
+			for (int i = 0; i < (int)items.size(); ++i) {
+				bool isSelected = (selectedIndex == i);
+				std::string item = "COM" + std::to_string(items[i]);
+				ImGui::PushStyleColor(ImGuiCol_Text, isSelected ? ImVec4(1.0f, 0.8f, 0.2f, 1.0f) : ImVec4(1.0f, 1.0f, 0.6f, 1.0f));
+				if (ImGui::Selectable(item.c_str(), isSelected)) {
+					//if comport is already open, close it before opening new one.
+					if (m_OpenComPort != -1) {
+						RS232_CloseComport(m_OpenComPort);
+						m_OpenComPort = -1;
+						isComPortConnected = false;
+						console.appendf("[*] Closed previously open COM port.\n");
+					}
 
+
+
+					int portIndex = items[i] -1;
+					if (m_OpenComPort != -1 && m_OpenComPort != portIndex) {
+						RS232_CloseComport(m_OpenComPort);
+						m_OpenComPort = -1;
+					}
+					char mode[] = { '8','N','1',0 };
+					int openRes = RS232_OpenComport(portIndex, m_SaveData.baudrate, mode, 0);
+					if (openRes != 0) {
+						console.appendf("[-] Error opening COM%d: ret=%d\n", portIndex + 1, openRes);
+						#ifdef _WIN32
+						DWORD winErr = GetLastError();
+						console.appendf("    OS Error: GetLastError=%lu\n", (unsigned long)winErr);
+						#else
+						console.appendf("    OS Error: errno=%d (%s)\n", errno, strerror(errno));
+						#endif
+						isComPortConnected = false;
+					} else {
+						selectedIndex = i;
+						m_OpenComPort = portIndex;
+						isComPortConnected = true;
+						console.appendf("[+] Connected to com port: COM%d (idx=%d)\n", items[i], i);
+						selectionChanged = true;
+						// start comport thread 
+						//if (!g_SerialPollThread.joinable()) {
+						//	g_SerialPollThread = std::thread(&serialPollLoop, this);
+						//}
+						std::thread ComPortPollThread(serialPollLoop);
+						ComPortPollThread.detach();
+					}
+					ImGui::CloseCurrentPopup();
+				}
+				ImGui::PopStyleColor();
+			}
+			ImGui::EndChild();
+			ImGui::EndPopup();
+		}
+		ImGui::PopStyleColor(2);
+
+		// restore cursor
+		ImGui::SetCursorScreenPos(ImVec2(pos.x, pos.y + tabHeight + 4));
 
 		return selectionChanged;
 	}
@@ -1015,57 +1058,20 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 		ImGui::BeginChild("DropdownChild", ImVec2(250, dropdownReservedHeight), true, ImGuiWindowFlags_NoScrollbar);
 		
 
-			if (CustomTrapezoidDropdown("Select a COM Port", m_ComPorts, m_SelectedPort))
-			{
-				m_ComPorts.clear();
-				// Getting list of COM ports super easy
-				// https://stackoverflow.com/a/60950058/9274593
-				wchar_t lpTargetPath[5000];
-				for (int i = 0; i < 255; i++) {
-					std::wstring str = L"COM" + std::to_wstring(i); // converting to COM0, COM1, COM2
-					DWORD res = QueryDosDevice(str.c_str(), lpTargetPath, 5000);
-
-					// Test the return value and error if any
-					if (res != 0) //QueryDosDevice returns zero if it didn't find an object
-					{
-						m_ComPorts.push_back(i);
-						//std::cout << str << ": " << lpTargetPath << std::endl;
-					}
-					if (::GetLastError() == ERROR_INSUFFICIENT_BUFFER)
-					{
-						printf("ERROR: %d\n", ::GetLastError());
-						console.appendf("[-] ERROR Scanning COM Ports: [%d]\n", ::GetLastError());
-						scrollToBottom = true;
-						ErrorMsg = "ERROR: " + std::to_string(::GetLastError());
-						isComPortConnected = false;
-					}
-
+            // Refresh COM port list each frame so dropdown stays up-to-date
+			m_ComPorts.clear();
+			wchar_t lpTargetPath[5000];
+			for (int i = 0; i < 255; i++) {
+				std::wstring str = L"COM" + std::to_wstring(i);
+				DWORD res = QueryDosDevice(str.c_str(), lpTargetPath, 5000);
+				if (res != 0) {
+					m_ComPorts.push_back(i);
 				}
-
-				// Selection changed!
-				int selectedPort = m_ComPorts[m_SelectedPort];
-				printf("Selected COM Port: %d\n", selectedPort);
-				console.appendf("[+] Selected COM Port: %d\n", selectedPort);
-				scrollToBottom = true;
-				// Attempt to connect to Selected Serial Port.
-				char mode[] = { '8','N','1',0 }; // Serial port config. this sets bit mode & parity. 
-
-				//if (RS232_OpenComport(m_ComPorts.at(m_SelectedPort) -1 , 115200, mode, 0)) // (ComPort, Baudrate, mode, flowcontrol) // dont hardcode baudrate
-				if (RS232_OpenComport(m_ComPorts.at(m_SelectedPort) - 1, m_SaveData.baudrate, mode, 0)) // (ComPort, Baudrate, mode, flowcontrol)
-				{
-					//printf("Can not open comport COM%i\n", m_ComPorts.at(m_SelectedPort));
-					ErrorMsg = "Can not open comport COM" + std::to_string(m_ComPorts.at(m_SelectedPort) - 1);
-					console.appendf("[-] Cannot open comport COM%i\n", m_ComPorts.at(m_SelectedPort) - 1);
-					scrollToBottom = true;
-					isComPortConnected = false;
-				}
-				printf("Connected to com port: %d", m_ComPorts.at(m_SelectedPort));
-				console.appendf("[+] Connected to com port: %d\n", m_ComPorts.at(m_SelectedPort)-1);
-				scrollToBottom = true;
-				isComPortConnected = true;
-
 			}
-			ImGui::EndChild();
+
+			// Draw dropdown (selection/open handled inside the function)
+			CustomTrapezoidDropdown("Select a COM Port", m_ComPorts, m_SelectedPort);
+		ImGui::EndChild();
 
 			ImGui::Dummy(ImVec2(0, 10)); // spacing
 
@@ -1121,62 +1127,41 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 				int len = strlen(m_UserInput); // safer than looping
 				char sendBuffer[130]; // 128 + \n + \0
 				memcpy(sendBuffer, m_UserInput, len);
-				sendBuffer[len] = '\n';  // newline to trigger Arduino parsing? LOL
-				sendBuffer[len + 1] = '\0';
+				//sendBuffer[len] = '\n';  // newline to trigger Arduino parsing? LOL
+				//sendBuffer[len + 1] = '\0';
+				sendBuffer[len] = '\r';  // newline to trigger Arduino parsing? LOL
+				sendBuffer[len + 1] = '\n';
 
 
-
-				// horrible debug buffer dumps
-				//int i;
-				//for (i = 0; i < 128; i++) {
-				//	if (m_UserInput[i] == '\0') { // find index of end of null terminated string
-				//		printf("\nFound \\0 at end, %d", i);
-				//		break;
-				//	}
-				//	if (m_UserInput[i] == '\n') {
-				//		printf("\nFound \\n at end, %d", i);
-				//		break;
-				//	}
-				//}
-				//m_UserInput[i] = '\n';
-				//m_UserInput[i + 1] = '\0';
-
-				// hexdump time. 
-				console.appendf("  **  HEX DUMP  **\n");
-				const int COLS = 8;
-				console.appendf("___________________________________\n");
-				console.appendf("00 01 02 03 04 05 06 07  | ascii  |\n");
-				//// header
-				//for (int c = 0; c < COLS; c++) {
-				//	printf("%s%02X", c ? " " : "", c);
-				//	console.appendf("%s%02X", c ? " " : "", c);
-				//}
-				//printf("  |");
-				//console.appendf("  |");
-				//for (int c = 0; c < COLS; c++) {
-				//	printf("%X", c);
-				//	console.appendf("%X", c);
-				//}
-				//printf("|\n");
-				//console.appendf("|\n");
-
-				for (int i = 0; i < len; i += COLS) {
-					for (int j = 0; j < COLS; j++) {
-						unsigned char b = (i + j < len) ? (unsigned char)sendBuffer[i + j] : 0x00;
-						printf("%s%02X", j ? " " : "", b);
-						console.appendf("%s%02X", j ? " " : "", b);
+				if (debugMode) {
+					// hexdump time. 
+					console.appendf("\n");
+					console.appendf("  **  HEX DUMP  **\n");
+					const int COLS = 8;
+					console.appendf("___________________________________\n");
+					console.appendf("00 01 02 03 04 05 06 07  | ascii  |\n");
+					console.appendf("___________________________________\n");
+					for (int i = 0; i < len; i += COLS) {
+						for (int j = 0; j < COLS; j++) {
+							unsigned char b = (i + j < len) ? (unsigned char)sendBuffer[i + j] : 0x00;
+							printf("%s%02X", j ? " " : "", b);
+							console.appendf("%s%02X", j ? " " : "", b);
+						}
+						printf("  |");
+						console.appendf("  |");
+						for (int j = 0; j < COLS; j++) {
+							unsigned char b = (i + j < len) ? (unsigned char)sendBuffer[i + j] : 0x00;
+							char ch = (i + j < len) ? ((b >= 32 && b < 127) ? b : '.') : '0';
+							printf("%c", ch);
+							console.appendf("%c", ch);
+						}
+						printf("|\n");
+						console.appendf("|\n");
 					}
-					printf("  |");
-					console.appendf("  |");
-					for (int j = 0; j < COLS; j++) {
-						unsigned char b = (i + j < len) ? (unsigned char)sendBuffer[i + j] : 0x00;
-						char ch = (i + j < len) ? ((b >= 32 && b < 127) ? b : '.') : '0';
-						printf("%c", ch);
-						console.appendf("%c", ch);
-					}
-					printf("|\n");
-					console.appendf("|\n");
+					console.appendf("___________________________________\n");
 				}
+
+				
 
 
 
@@ -1209,7 +1194,8 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 						scrollToBottom = true;
 						comPortHasOutput = false; 
 					}
-					printf("\nWrote %d bytes on Comport %d", result, m_ComPorts.at(m_SelectedPort));
+					printf("\nWrote %d bytes on Comport %d\n", result, m_ComPorts.at(m_SelectedPort));
+					console.appendf("\n[+] Wrote %d bytes on COM%d\n", result, m_ComPorts.at(m_SelectedPort));
 					comPortHasOutput = true;
 
 				}
@@ -1226,6 +1212,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 
 				Out += "\n[+] Sent: ";
 				Out += sendBuffer; // This is the "console window" in Text Mode.
+				Out += "\n";
 				//ImGui::SetKeyboardFocusHere(-1);
 				refocusTextBox = true;
 			}
@@ -1238,29 +1225,99 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 
 
 			ImGui::SameLine();
-			if (ImGui::Button("Clear Buffer")) {
+			if (ImGui::Button("Clear Buffers")) {
 				Out.clear();
 				console.clear();
 				memset(m_UserInput, 0, 128);
 			}
 
-			//ImGui::BeginChild("Console", ImVec2(0, 300), true, ImGuiWindowFlags_HorizontalScrollbar);
-			////ImGui::TextUnformatted(Out.c_str());
 
-			//ImGui::TextUnformatted(console.begin(), console.end());
-			//if (scrollToBottom)
-			//	ImGui::SetScrollHereY(1.0f); // 1.0 = bottom
-			//scrollToBottom = false;
-			//ImGui::EndChild();
+			// Console Output Area
 			ImGui::BeginChild("Console", ImVec2(0, 300), true, ImGuiWindowFlags_HorizontalScrollbar);
 			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.65f, 0.0f, 1.0f));
-			//colors[ImGuiCol_Border] = ImVec4(1.0f, 0.65f, 0.0f, 1.0f); // Orange (RGB: 255, 165, 0)
-			ImGui::TextUnformatted(console.begin(), console.end());
+			console.append("\n");
+			ImGui::InputTextMultiline(
+				"##console",
+				const_cast<char*>(console.c_str()),
+				console.size() + 1,
+				ImVec2(-FLT_MIN, -FLT_MIN),
+				ImGuiInputTextFlags_ReadOnly
+			);
+			console.Buf.pop_back();  // remove the \0
+			console.Buf.pop_back();  // remove the \n
+			console.Buf.push_back('\0');  // restore terminator
+
+			if (scrollToBottom) {
+				for (ImGuiWindow* w : ImGui::GetCurrentContext()->Windows) {
+					if (w && strstr(w->Name, "##console")) {
+						ImGui::SetScrollY(w, w->ScrollMax.y + 9999.0f);
+						break;
+					}
+				}
+				scrollToBottom = false;
+			}
+
 			ImGui::PopStyleColor();
-			if (scrollToBottom)
-				ImGui::SetScrollHereY(1.0f);
+			//if (scrollToBottom)
+			//	ImGui::SetScrollHereY(1.0f);
 			scrollToBottom = false;
 			ImGui::EndChild();
+
+
+
+
+			// BUTTONS FOR SENDING SPECIAL COMMANDS LIKE RESETS
+
+			if (ImGui::Button("Serial Reset DTR [HARD RESET]")) {
+				std::thread([this]() {
+					RS232_enableDTR(m_OpenComPort);
+					std::this_thread::sleep_for(std::chrono::milliseconds(100));
+					RS232_disableDTR(m_OpenComPort);
+					std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+					RS232_flushRXTX(m_OpenComPort);
+					}).detach();
+				console.appendf("[*] DTR reset sent.\n");
+				scrollToBottom = true;
+			}
+
+			if (ImGui::Button("Reset MicroPython Device [CTRL+D]")) {
+				std::thread([this]() {
+					RS232_SendByte(m_OpenComPort, 0x03);  // Ctrl+C - interrupt
+					std::this_thread::sleep_for(std::chrono::milliseconds(200));
+					RS232_SendByte(m_OpenComPort, 0x02);  // Ctrl+B - exit raw REPL
+					std::this_thread::sleep_for(std::chrono::milliseconds(200));
+					RS232_SendByte(m_OpenComPort, 0x04);  // Ctrl+D - soft reset
+					std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+					RS232_flushRXTX(m_OpenComPort);
+					}).detach();
+				console.appendf("[*] Soft reset sent, waiting for device...\n");
+				scrollToBottom = true;
+			}
+			//if (ImGui::Button("Serial Reset DTR [HARD RESET]")) {
+			//	RS232_enableDTR(m_OpenComPort);
+			//	std::this_thread::sleep_for(std::chrono::milliseconds(100));
+			//	RS232_disableDTR(m_OpenComPort);
+			//	std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+			//	RS232_flushRXTX(m_OpenComPort);
+			//	console.appendf("[*] DTR reset sent.\n");
+			//	scrollToBottom = true;
+			//}
+			//if (ImGui::Button("Reset MicroPython Device [sends CTRL+D]")) {
+			//	//RS232_SendByte(m_OpenComPort, 0x04);  // Ctrl+D soft reset (MicroPython)
+			//	//std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+			//	//RS232_flushRXTX(m_OpenComPort);
+			//	//console.appendf("[*] Device reset sent.\n");
+			//	//scrollToBottom = true;
+			//	// Run this right after successfully opening the port
+			//	RS232_SendByte(m_OpenComPort, 0x03);  // Ctrl+C - stop REPL
+			//	//Sleep(200);
+			//	std::this_thread::sleep_for(std::chrono::milliseconds(200));
+			//	RS232_SendByte(m_OpenComPort, 0x04);  // Ctrl+D - soft reset, runs main.py
+			//	std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+			//	RS232_flushRXTX(m_OpenComPort);
+			//	console.appendf("[*] Port opened, waiting for device...\n");
+			//}
+
 
 			ImGui::EndChild(); // End right column child
 
@@ -1327,7 +1384,7 @@ Walnut::Application* Walnut::CreateApplication(int argc, char** argv)
 		{
 			if (ImGui::MenuItem("Exit"))
 			{
-				app->Close();
+			 app->Close();
 			}
 			ImGui::EndMenu();
 		}
