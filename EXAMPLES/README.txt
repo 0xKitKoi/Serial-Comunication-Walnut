@@ -1,14 +1,19 @@
-This program is a tool to communicate with microcontrollers like an Arduino.
+This program is a tool to communicate over Serial Ports with microcontrollers like an Arduino.
 
-IF YOU DO NOT HAVE A MICROCONTROLLER:
+IF YOU DO NOT HAVE A MICROCONTROLLER SEE ECHOSERVER/ :
 I included an example program that acts as an ECHO Server. You can connect to the echo server with the client via network mode.
 Assuming you are running the Example Echo Server on your machine, ( Default Settings are 127.0.0.1:5000 )
-You can use it to test the commands you will send to a microcontroller. (or just test this out ig)
+You can use it to test the commands you will send to a microcontroller. (or just test this Desktop Program out ig)
 
 If you DO have a microcontroller, Example Firmware is included:
 
+MicroPython Simple Echo Program included
+
+Arduino Simple Echo Program is included in Arduino Examples
 Arduino Code for a tiny OLED Screen over I2C ( I used a SSD1315 chip )
 	Displays text sent over USB, or plays a small animation if the play command was sent
+
+
 
 Raspberry Pi Pico (W) code in C/C++ and Python (MicroPython)
 	Pico W C SDK Firmware includes:

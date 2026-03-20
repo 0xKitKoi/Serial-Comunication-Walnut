@@ -705,6 +705,7 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 				int result = RS232_SendBuf(m_ComPorts.at(m_SelectedPort) - 1,
 					buf.data(),               // unsigned char * (non-const)
 					static_cast<int>(buf.size()));
+				console.appendf("[+] Sent to COM%d: %s\n", m_ComPorts.at(m_SelectedPort), msg.c_str());
 				outputTriggerLED = true; // trigger LED on send
 				if (result < 0) {
 					console.appendf("[-] Error sending data over serial port.\n");
@@ -713,6 +714,7 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 					isComPortConnected = false;
 				}
 			}
+			outputTriggerLED = true; // trigger LED on send
 
 			ImVec2 mouseRel = ImVec2(mousePos.x - padTopLeft.x, mousePos.y - padTopLeft.y);
 
@@ -1124,6 +1126,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 
 			bool sendByClick = ImGui::Button("Send");
 			if (sendByEnter || sendByClick) {
+				outputTriggerLED = true; // trigger output LED on send
 				int len = strlen(m_UserInput); // safer than looping
 				char sendBuffer[130]; // 128 + \n + \0
 				memcpy(sendBuffer, m_UserInput, len);
