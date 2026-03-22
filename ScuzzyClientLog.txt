@@ -1,0 +1,6 @@
+[+] Application Started. 
+
+[+] Wrote 8 bytes on COM0
+[+] Application Mode Switched: [Network]
+[-] Unable to connect to server! [111]
+[+] Application Closed. Destructor Finished. 

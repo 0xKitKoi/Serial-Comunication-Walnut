@@ -188,7 +188,7 @@ void serialPollLoop()
 				std::string s(reinterpret_cast<char*>(buf.data()), n);
 				IN_flashStartTime = ImGui::GetTime();
 				Out.append("\n [+] " + s);
-				console.appendf("[+] RECEIVED: %s\n", s.c_str());
+				console.appendf("\n[+] RECEIVED: %s\n", s.c_str());
 				scrollToBottom = true;
 				inputTriggerLED = true;
 				fflush(stdout);
@@ -227,14 +227,14 @@ void sendThread(socket_t clientSocket) {
 
         if (bytes == SOCK_ERR) {
             int error_code = sock_errno;
-            printf("Send Failed! %d\n", error_code);
-            console.appendf("[-] Send Failed! Error Code: %d\n", error_code);
+            printf("\n[-] Send Failed! %d\n", error_code);
+            console.appendf("\n[-] Send Failed! Error Code: %d\n", error_code);
             scrollToBottom = true;
             outputTriggerLED = false;
         }
         else {
-            printf("Sent %d bytes: %s\n", bytes, message.c_str());
-            console.appendf("[+] %s\n", message.c_str());
+            printf("\n[+] Sent %d bytes: %s\n", bytes, message.c_str());
+            console.appendf("\n[+] %s\n", message.c_str());
             outputTriggerLED = true;
             scrollToBottom = true;
         }
@@ -266,7 +266,7 @@ void AttemptConnect(SaveData data) {
     ConnectSocket = socket(AF_INET, SOCK_STREAM, 0);
     if (ConnectSocket == INVALID_SOCK) {
         int error_code = sock_errno;
-        printf("Failed to create socket. Error: %d\n", error_code);
+        printf("\n[-] Failed to create socket. Error: %d\n", error_code);
         console.appendf("[-] Failed to create socket. Error: %d\n", error_code);
         scrollToBottom = true;
         return;
@@ -278,8 +278,8 @@ void AttemptConnect(SaveData data) {
 
     if (connect(ConnectSocket, (sockaddr*)&clientService, sizeof(clientService)) == SOCK_ERR) {
         int error_code = sock_errno;
-        printf("Unable to connect to server. Error: %d\n", error_code);
-        console.appendf("[-] Unable to connect to server. Error Code: %d\n", error_code);
+        printf("\n[-] Unable to connect to server. Error: %d\n", error_code);
+        console.appendf("\n[-] Unable to connect to server. Error Code: %d\n", error_code);
         scrollToBottom = true;
         sock_close(ConnectSocket);
         ConnectSocket = INVALID_SOCK;
@@ -443,7 +443,7 @@ public:
 	ExampleLayer() {
 		buf = new unsigned char[128]; // Buffer populated by Network recv thread 
 		m_UserInput = new char[128](); // User input buffer for sending data. Hardcoded to 128 bytes for now.
-		console.appendf("[+] Application Started. ");
+		console.appendf("[+] Application Started. \n");
 	}
 	~ExampleLayer() {
 		delete[] buf;
@@ -511,7 +511,7 @@ public:
 		WSADATA wsaData;
 		if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
 			printf( "WSAStartup failed\n");
-			console.appendf("[-] WSAStartup failed! ");
+			console.appendf("\n[-] WSAStartup failed! \n");
 		}
 		#endif
 
@@ -863,10 +863,12 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 		if (ImGui::IsItemClicked()) {
 			ImGui::OpenPopup(popup_id.c_str());
 			// debug log
-			if (items.empty()) console.appendf("[-] Dropdown opened: no COM ports detected\n");
+			if (items.empty()) console.appendf("\n[-] Dropdown opened: no COM ports detected\n");
 			else {
-				console.appendf("[+] Dropdown opened:\n");
-				for (size_t di = 0; di < items.size(); ++di) console.appendf("  idx=%zu -> COM%d\n", di, items[di]);
+				if (debugMode) {
+					console.appendf("\n[+] Dropdown opened:\n");
+					for (size_t di = 0; di < items.size(); ++di) console.appendf("  idx=%zu -> COM%d\n", di, items[di]);
+				}
 			}
 			scrollToBottom = true;
 		}
@@ -878,10 +880,20 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 		ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(0.01f, 0.01f, 0.01f, 0.9f));
 		ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.01f, 0.01f, 0.01f, 0.0f));
 		if (ImGui::BeginPopup(popup_id.c_str(), ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove)) {
-			ImGui::BeginChild((popup_id + std::string("_child")).c_str(), ImVec2(width, dropdownMaxHeight), false, ImGuiWindowFlags_NoScrollWithMouse);
+			//ImGui::BeginChild((popup_id + std::string("_child")).c_str(), ImVec2(width, dropdownMaxHeight), false, /*ImGuiWindowFlags_NoScrollWithMouse*/ 0);
+			ImGui::BeginChild((popup_id + std::string("_child")).c_str(), 
+    ImVec2(width, dropdownMaxHeight - ImGui::GetStyle().WindowPadding.y * 2), 
+    false, 0);
 			for (int i = 0; i < (int)items.size(); ++i) {
 				bool isSelected = (selectedIndex == i);
-				std::string item = "COM" + std::to_string(items[i]);
+				#ifdef _WIN32
+    				//ImGui::Text("COM%d", m_ComPorts[i]);
+					std::string item = "COM" + std::to_string(items[i]);
+				#else
+    				//ImGui::Text("%s", RS232_comports[m_ComPorts[i]]);  // shows /dev/ttyUSB0 etc
+					std::string item = comports[items[i]];
+				#endif
+				//std::string item = "COM" + std::to_string(items[i]);
 				ImGui::PushStyleColor(ImGuiCol_Text, isSelected ? ImVec4(1.0f, 0.8f, 0.2f, 1.0f) : ImVec4(1.0f, 1.0f, 0.6f, 1.0f));
 				if (ImGui::Selectable(item.c_str(), isSelected)) {
 					//if comport is already open, close it before opening new one.
@@ -1035,7 +1047,8 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 					//closesocket(ConnectSocket);
 					close(ConnectSocket);
 					connectionAquired = false;                   // reset connection flag
-					console.appendf("[-] Invalid Socket Passed into Networking Threads! wow!");
+					if (debugMode)
+						console.appendf("\n[-] Invalid Socket Passed into Networking Threads! wow!\n");
 					scrollToBottom = true;
 					isNetworkConnected = false;
 				}
