@@ -40,8 +40,38 @@ std::string Out; // dump buffer received from server to user in textbox. This is
 /// Networking globals.
 /// </summary>
 int globalport; // m_SelectedPort isnt accessible when file->close is called. Cherno's gonna hit me over the head with a chair for this
-SOCKET ConnectSocket; // Global socket shared amongst send and recv threads. I know, its horrible :(
-sockaddr_in clientService;
+#ifdef _WIN32
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+    #include <windows.h>
+    using socket_t = SOCKET;
+    #define INVALID_SOCK INVALID_SOCKET
+    #define SOCK_ERR     SOCKET_ERROR
+    #define sock_close   closesocket
+    #define sock_errno   WSAGetLastError()
+#else
+    #include <sys/socket.h>
+    #include <netinet/in.h>
+    #include <arpa/inet.h>
+    #include <unistd.h>
+    #include <errno.h>
+	#include <filesystem>
+    using socket_t = int;
+    #define INVALID_SOCK  (-1)
+    #define SOCK_ERR      (-1)
+    #define sock_close    close
+    #define sock_errno    errno
+    // WSA stubs â€” do nothing on Linux
+    inline int  WSAStartup(int, void*) { return 0; }
+    inline void WSACleanup() {}
+
+	#define RS232_PORTNR    (38)
+	extern int Cport[RS232_PORTNR];
+	extern const char *comports[RS232_PORTNR];
+#endif
+socket_t ConnectSocket = INVALID_SOCK;
+sockaddr_in clientService;  // No ifdef needed â€” same on both!
+
 char ipbuf[20] = { 0 };
 char portbuf[6] = { 0 };
 
@@ -80,43 +110,47 @@ struct SaveData { // Default settings. Change to Microcontroller/Server IP:PORT
 	int baudrate = 115200; // Default baudrate for serial communication
 }m_SaveData;
 
+
+
+
+#ifdef _WIN32
+    #define THREAD_FUNC DWORD WINAPI
+    #define THREAD_ARG  LPVOID
+#else
+    #define THREAD_FUNC void*
+    #define THREAD_ARG  void*
+#endif
+
+//THREAD_FUNC receiveThread(THREAD_ARG lpParam) { ... }
+//THREAD_FUNC sendThread(THREAD_ARG lpParam) { ... }
+
 /// <summary>
 /// Networking Receive Thread. Just continuously recieves data from the server and pushes it to the message queue.
 /// </summary>
 /// <param name="lpParam">Socket Object is passed in. IDK Why but Windows casts it to a LPVoid datatype..?</param>
 /// <returns>returns 0 on signal to close. (stopThreads bool)</returns>
-DWORD WINAPI receiveThread(LPVOID lpParam) {
-	SOCKET clientSocket = reinterpret_cast<SOCKET>(lpParam);
-	char buffer[1024];
-	int bytesReceived;
-	while (!stopThreads) {
-		//inputTriggerLED = false;
-		bytesReceived = recv(clientSocket, buffer, sizeof(buffer) - 1, 0);
-		if (bytesReceived > 0) {
-			IN_flashStartTime = ImGui::GetTime(); // start input LED flash timer
-			buffer[bytesReceived] = '\0'; // Null-terminate the received data
-			// echo back by signaling the send thread.
-			//std::lock_guard<std::mutex> lock(queueMutex);
-			//messageQueue.push(std::string(buffer));
-			//queueCV.notify_one();
-			if (connectionAquired) {
-				Out.append("\n [+] " + std::string(buffer));
-				console.appendf("\n[+] RECEIVED: %s\n", buffer);
-				scrollToBottom = true;
-			}
+void receiveThread(socket_t clientSocket) {
+    char buffer[1024];
+    int bytesReceived;
 
+    while (!stopThreads) {
+        bytesReceived = recv(clientSocket, buffer, sizeof(buffer) - 1, 0);
+        if (bytesReceived > 0) {
+            IN_flashStartTime = ImGui::GetTime();
+            buffer[bytesReceived] = '\0';
 
-			inputTriggerLED = true; // light up input LED on data recv
-			
-		}
-		else {
-			//inputTriggerLED = false;
-			break;
-		}
-	}
-	//free(buffer);
-	//detete[] buffer;
-	return 0;
+            if (connectionAquired) {
+                Out.append("\n [+] " + std::string(buffer));
+                console.appendf("\n[+] RECEIVED: %s\n", buffer);
+                scrollToBottom = true;
+            }
+            inputTriggerLED = true;
+        }
+        else {
+            break;
+        }
+    }
+    // no return needed â€” void function
 }
 
 
@@ -175,45 +209,42 @@ void serialPollLoop()
 /// </summary>
 /// <param name="lpParam">Windows needs to convert arguments to LPVoid to pass to threads. This is the Socket object.</param>
 /// <returns>returns 0 on signal to close. (stopThreads bool)</returns>
-DWORD WINAPI sendThread(LPVOID lpParam) {
-	SOCKET clientSocket = reinterpret_cast<SOCKET>(lpParam);
-	while (!stopThreads) {
-		//outputTriggerLED = false;
-		std::unique_lock<std::mutex> lock(queueMutex);
-		queueCV.wait(lock, [] { return !messageQueue.empty() || stopThreads; });
+void sendThread(socket_t clientSocket) {
+    while (!stopThreads) {
+        std::unique_lock<std::mutex> lock(queueMutex);
+        queueCV.wait(lock, [] { return !messageQueue.empty() || stopThreads; });
 
-		if (stopThreads)
-			break; // let 'lock' go out of scope and unlock safely
+        if (stopThreads)
+            break;
 
-		std::string message = messageQueue.front();
-		messageQueue.pop();
-		// No need to manually unlock; optional, but clean:
-		lock.unlock();
-		OUT_flashStartTime = ImGui::GetTime(); // start output LED flash timer
-		int bytes = send(clientSocket, message.c_str(),
-			static_cast<int>(message.length()), 0);
-		if (bytes == SOCKET_ERROR) {
-			printf("Send failed %d\n", WSAGetLastError());
-			console.appendf("[-] Send failed %d\n", WSAGetLastError());
-			scrollToBottom = true;
-			outputTriggerLED = false; // light up output LED on failure
-		}
-		else {
-			printf("Sent %d bytes: %s\n", bytes, message.c_str());
-			console.appendf("[+] %s\n", message.c_str());
-			outputTriggerLED = true;          // success indicator (if desired)
-			scrollToBottom = true;
-		}
+        std::string message = messageQueue.front();
+        messageQueue.pop();
+        lock.unlock();
 
+        OUT_flashStartTime = ImGui::GetTime();
+        int bytes = send(clientSocket, message.c_str(),
+            static_cast<int>(message.length()), 0);
 
-	}
-	return 0;
+        if (bytes == SOCK_ERR) {
+            int error_code = sock_errno;
+            printf("Send Failed! %d\n", error_code);
+            console.appendf("[-] Send Failed! Error Code: %d\n", error_code);
+            scrollToBottom = true;
+            outputTriggerLED = false;
+        }
+        else {
+            printf("Sent %d bytes: %s\n", bytes, message.c_str());
+            console.appendf("[+] %s\n", message.c_str());
+            outputTriggerLED = true;
+            scrollToBottom = true;
+        }
+    }
 }
-
 /// <summary>
 /// Sets up socket and attempts to connect to server specified in SaveData struct.
 /// </summary>
 /// <param name="data"> SaveData struct object, from file / settings menu</param>
+/*
 void AttemptConnect(SaveData data) {
 	ConnectSocket = socket(AF_INET, SOCK_STREAM, 0);
 	clientService.sin_family = AF_INET;
@@ -229,6 +260,35 @@ void AttemptConnect(SaveData data) {
 	}
 	// send a test byte to see if connection is alive. (This is also used as a VERY simple Client auth with the Proxy Server.)
 	send(ConnectSocket, "W", 1, 0); 
+} 
+*/
+void AttemptConnect(SaveData data) {
+    ConnectSocket = socket(AF_INET, SOCK_STREAM, 0);
+    if (ConnectSocket == INVALID_SOCK) {
+        int error_code = sock_errno;
+        printf("Failed to create socket. Error: %d\n", error_code);
+        console.appendf("[-] Failed to create socket. Error: %d\n", error_code);
+        scrollToBottom = true;
+        return;
+    }
+
+    clientService.sin_family = AF_INET;
+    clientService.sin_addr.s_addr = inet_addr(data.ipAddress.c_str());
+    clientService.sin_port = htons(data.port);
+
+    if (connect(ConnectSocket, (sockaddr*)&clientService, sizeof(clientService)) == SOCK_ERR) {
+        int error_code = sock_errno;
+        printf("Unable to connect to server. Error: %d\n", error_code);
+        console.appendf("[-] Unable to connect to server. Error Code: %d\n", error_code);
+        scrollToBottom = true;
+        sock_close(ConnectSocket);
+        ConnectSocket = INVALID_SOCK;
+        return;
+    }
+
+    // Send a test byte to see if connection is alive.
+    // (Also used as a very simple client auth with the Proxy Server.)
+    send(ConnectSocket, "W", 1, 0);
 }
 
 
@@ -256,9 +316,18 @@ void OpenSettingsFile()
 				file.close();
 			}
 			// pre-fill buffers with current values
-			strncpy_s(ipbuf, m_SaveData.ipAddress.c_str(), sizeof(ipbuf));
-			strncpy_s(portbuf, std::to_string(m_SaveData.port).c_str(), sizeof(portbuf));
-			strncpy_s(baudbuf, std::to_string(m_SaveData.baudrate).c_str(), sizeof(baudbuf));
+			//strncpy_s(ipbuf, m_SaveData.ipAddress.c_str(), sizeof(ipbuf));
+			#ifdef _WIN32
+    			strncpy_s(ipbuf, m_SaveData.ipAddress.c_str(), sizeof(ipbuf));
+				strncpy_s(portbuf, std::to_string(m_SaveData.port).c_str(), sizeof(portbuf));
+				strncpy_s(baudbuf, std::to_string(m_SaveData.baudrate).c_str(), sizeof(baudbuf));
+			#else
+    			strncpy(ipbuf, m_SaveData.ipAddress.c_str(), sizeof(ipbuf));
+				strncpy(portbuf, std::to_string(m_SaveData.port).c_str(), sizeof(portbuf));
+				strncpy(baudbuf, std::to_string(m_SaveData.baudrate).c_str(), sizeof(baudbuf));
+    			ipbuf[sizeof(ipbuf)-1] = '\0'; // strncpy doesn't guarantee null termination
+			#endif
+
 			return true;
 			}();
 
@@ -438,12 +507,13 @@ public:
 		// You can tweak these for glowing/yellow active styles! TODO: make theme selectable in settings.
 
 
-
+		#ifdef _WIN32
 		WSADATA wsaData;
 		if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
 			printf( "WSAStartup failed\n");
 			console.appendf("[-] WSAStartup failed! ");
 		}
+		#endif
 
 
 		// read settings from file.
@@ -475,25 +545,38 @@ public:
 			}
 		}
 
+		#ifdef _WIN32
+			// Scan for COM ports on Initialization.
+			wchar_t lpTargetPath[5000];
+			for (int i = 0; i < 255; i++) {
+				std::wstring str = L"COM" + std::to_wstring(i); // converting to COM0, COM1, COM2
+				DWORD res = QueryDosDevice(str.c_str(), lpTargetPath, 5000);
 
-		// Scan for COM ports on Initialization.
-		wchar_t lpTargetPath[5000];
-		for (int i = 0; i < 255; i++) {
-			std::wstring str = L"COM" + std::to_wstring(i); // converting to COM0, COM1, COM2
-			DWORD res = QueryDosDevice(str.c_str(), lpTargetPath, 5000);
+				// Test the return value and error if any
+				if (res != 0) //QueryDosDevice returns zero if it didn't find an object
+				{
+					m_ComPorts.push_back(i);
+					//std::cout << str << ": " << lpTargetPath << std::endl;
+				}
+				if (::GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+				{
+				}
 
-			// Test the return value and error if any
-			if (res != 0) //QueryDosDevice returns zero if it didn't find an object
-			{
-				m_ComPorts.push_back(i);
-				//std::cout << str << ": " << lpTargetPath << std::endl;
 			}
-			if (::GetLastError() == ERROR_INSUFFICIENT_BUFFER)
-			{
-			}
-
-		}
+		#else
+    		// Linux serial port enumeration
+    		for (auto& p : std::filesystem::directory_iterator("/dev")) {
+        		std::string name = p.path().filename().string();
+        		if (name.find("ttyS") == 0 || name.find("ttyUSB") == 0 
+            		|| name.find("ttyACM") == 0) {
+            		// add to your port list
+					// need to look up rs232 lib func. 
+					m_ComPorts;
+        		}
+    		}
+		#endif
 	}
+
 
 
 	void DrawVHSOverlay() // Retro green scanline effect
@@ -947,8 +1030,10 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 			scrollToBottom = true;
 
 			if (m_NetworkMode) {
-				if (ConnectSocket == INVALID_SOCKET) {           // close old one first
-					closesocket(ConnectSocket);
+				//if (ConnectSocket == INVALID_SOCKET) {           // close old one first
+				if (ConnectSocket == INVALID_SOCK) {
+					//closesocket(ConnectSocket);
+					close(ConnectSocket);
 					connectionAquired = false;                   // reset connection flag
 					console.appendf("[-] Invalid Socket Passed into Networking Threads! wow!");
 					scrollToBottom = true;
@@ -965,9 +1050,12 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 
 					// Create the socket
 					ConnectSocket = socket(AF_INET, SOCK_STREAM, 0);
-					if (ConnectSocket == INVALID_SOCKET) {
-						printf("Socket creation failed: %d\n", WSAGetLastError());
-						console.appendf("[-] Socket Creation Failed! [%d]\n", WSAGetLastError());
+					//if (ConnectSocket == INVALID_SOCKET) {
+					if (ConnectSocket == INVALID_SOCK) {
+						//printf("Socket creation failed: %d\n", WSAGetLastError());
+						//console.appendf("[-] Socket Creation Failed! [%d]\n", WSAGetLastError());
+						int error_code = sock_errno;
+						printf("Socket creation failed! [%d]\n", error_code);
 						scrollToBottom = true;
 						isNetworkConnected = false;
 						return;
@@ -979,13 +1067,17 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 					clientService.sin_port = htons(m_SaveData.port);
 
 					// Attempt to connect
-					if (connect(ConnectSocket, (SOCKADDR*)&clientService, sizeof(clientService)) == SOCKET_ERROR) {
-						int error_code = WSAGetLastError();
+					//if (connect(ConnectSocket, (SOCKADDR*)&clientService, sizeof(clientService)) == SOCKET_ERROR) {
+					if (connect(ConnectSocket, (sockaddr*)&clientService, sizeof(clientService)) == -1) {
+						//int error_code = WSAGetLastError();
+						int error_code = sock_errno;
 						printf("Unable to connect to server. %d\n", error_code);
 						console.appendf("[-] Unable to connect to server! [%d]\n", error_code);
 						scrollToBottom = true;
-						closesocket(ConnectSocket);
-						ConnectSocket = INVALID_SOCKET;
+						//closesocket(ConnectSocket);
+						close(ConnectSocket);
+						//ConnectSocket = INVALID_SOCKET;
+						ConnectSocket = INVALID_SOCK;
 						connectionAquired = false;
 						isNetworkConnected = false;
 					}
@@ -993,13 +1085,16 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 						send(ConnectSocket, "W", 1, 0); // initial handshake or ping!
 
 						// Launch threads
-						SOCKET sockCopy = ConnectSocket;   // copy while it’s still valid, IDK why this works but static_cast doesn't?
+						//SOCKET sockCopy = ConnectSocket;   // copy while itï¿½s still valid, IDK why this works but static_cast doesn't?
+						socket_t sockCopy = ConnectSocket;
 						//std::thread recvThread(&receiveThread, static_cast<void*>(&ConnectSocket));
 						//std::thread sendThread(&sendThread, static_cast<void*>(&ConnectSocket));
-						std::thread recvThread(&receiveThread, reinterpret_cast<void*>(sockCopy));
-						std::thread sendThread(&sendThread, reinterpret_cast<void*>(sockCopy));
-						recvThread.detach();
-						sendThread.detach();
+						//std::thread recvThread(&receiveThread, reinterpret_cast<void*>(sockCopy));
+						std::thread recvWorker(&receiveThread, ConnectSocket);
+						//std::thread sendThread(&sendThread, reinterpret_cast<void*>(sockCopy));
+						std::thread sendWorker(&sendThread, ConnectSocket);
+						recvWorker.detach();
+						sendWorker.detach();
 
 						connectionAquired = true;
 						isNetworkConnected = true;
@@ -1010,8 +1105,9 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 
 			}
 			else {
-				closesocket(ConnectSocket);
-				ConnectSocket = INVALID_SOCKET;
+				//closesocket(ConnectSocket);
+				close(ConnectSocket);
+				ConnectSocket = INVALID_SOCK;
 				connectionAquired = false;
 				isNetworkConnected = false;
 			}
@@ -1022,7 +1118,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 		// Begin Columns with 2 columns, no resizing
 		ImGui::Columns(2, nullptr, false);
 
-		// LEFT COLUMN — group mousepad + dropdown + coords inside ONE child box
+		// LEFT COLUMN ï¿½ group mousepad + dropdown + coords inside ONE child box
 		ImGui::BeginChild("LeftGroupBox", ImVec2(0, 0), true); // fill column
 
 		// Mouse Pad
@@ -1059,17 +1155,26 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 		float dropdownReservedHeight = 200.0f; // fixed height for dropdown area
 		ImGui::BeginChild("DropdownChild", ImVec2(250, dropdownReservedHeight), true, ImGuiWindowFlags_NoScrollbar);
 		
-
-            // Refresh COM port list each frame so dropdown stays up-to-date
-			m_ComPorts.clear();
-			wchar_t lpTargetPath[5000];
-			for (int i = 0; i < 255; i++) {
-				std::wstring str = L"COM" + std::to_wstring(i);
-				DWORD res = QueryDosDevice(str.c_str(), lpTargetPath, 5000);
-				if (res != 0) {
-					m_ComPorts.push_back(i);
+			#if defined(_WIN32)
+            	// Refresh COM port list each frame so dropdown stays up-to-date
+				m_ComPorts.clear();
+				wchar_t lpTargetPath[5000];
+				for (int i = 0; i < 255; i++) {
+					std::wstring str = L"COM" + std::to_wstring(i);
+					DWORD res = QueryDosDevice(str.c_str(), lpTargetPath, 5000);
+					if (res != 0) {
+						m_ComPorts.push_back(i);
+					}
 				}
-			}
+			#else
+    			// Check which ports from the RS232 library's list actually exist
+    			m_ComPorts.clear();
+    			for (int i = 0; i < RS232_PORTNR; i++) {
+        			if (std::filesystem::exists(comports[i]))
+            		m_ComPorts.push_back(i);
+    			}
+			#endif
+			
 
 			// Draw dropdown (selection/open handled inside the function)
 			CustomTrapezoidDropdown("Select a COM Port", m_ComPorts, m_SelectedPort);
@@ -1109,7 +1214,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 
 			ImGui::EndChild(); // End left column child
 
-			// Move to next column — RIGHT COLUMN
+			// Move to next column ï¿½ RIGHT COLUMN
 			ImGui::NextColumn();
 
 			ImGui::BeginChild("TextBox", ImVec2(0, 0), true, ImGuiWindowFlags_NoScrollbar);

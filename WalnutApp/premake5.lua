@@ -10,7 +10,7 @@ project "WalnutApp"
    includedirs
    {
       "../Walnut/vendor/imgui",
-      "../Walnut/vendor/glfw/include",
+      "../Walnut/vendor/GLFW/include",
       "../Walnut/vendor/glm",
 
       "../Walnut/Walnut/src",
@@ -20,7 +20,9 @@ project "WalnutApp"
 
    links
    {
-       "Walnut"
+       "Walnut",
+       "ImGui",
+       "GLFW"
    }
 
    targetdir ("../bin/" .. outputdir .. "/%{prj.name}")
@@ -29,6 +31,24 @@ project "WalnutApp"
    filter "system:windows"
       systemversion "latest"
       defines { "WL_PLATFORM_WINDOWS" }
+      links
+      {
+          "%{Library.Vulkan}",
+      }
+      
+   filter "system:linux"
+    links
+    {
+        "vulkan",
+        "dl",
+        "pthread",
+        "X11",
+        "Xrandr",
+        "Xi",
+        "Xinerama",
+        "Xcursor",
+    }
+    linkoptions { "-Wl,--start-group" }
 
    filter "configurations:Debug"
       defines { "WL_DEBUG" }
