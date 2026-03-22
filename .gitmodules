@@ -1,6 +1,7 @@
 [submodule "Walnut"]
 	path = Walnut
-	url = https://github.com/TheCherno/Walnut
+	url = https://github.com/0xKitKoi/Walnut
+	branch = linux-support
 [submodule "RS-232"]
 	path = RS-232
 	url = https://gitlab.com/Teuniz/RS-232.git
