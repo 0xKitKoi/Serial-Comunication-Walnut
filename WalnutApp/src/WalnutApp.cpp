@@ -36,19 +36,25 @@ std::condition_variable queueCV; // Condition variable for signaling something i
 std::string Out; // dump buffer received from server to user in textbox. This is accessible to the Layer class AND the recv thread.
 
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN  // prevents windows.h from pulling in winsock.h
+#endif
+
 /// <summary>
 /// Networking globals.
 /// </summary>
 int globalport; // m_SelectedPort isnt accessible when file->close is called. Cherno's gonna hit me over the head with a chair for this
 #ifdef _WIN32
-    #include <winsock2.h>
-    #include <ws2tcpip.h>
-    #include <windows.h>
-    using socket_t = SOCKET;
-    #define INVALID_SOCK INVALID_SOCKET
-    #define SOCK_ERR     SOCKET_ERROR
-    #define sock_close   closesocket
-    #define sock_errno   WSAGetLastError()
+//#include <winsock2.h>
+//#include <ws2tcpip.h>
+//#include <windows.h>
+using socket_t = SOCKET;
+//#define close closesocket
+#define INVALID_SOCK INVALID_SOCKET
+#define SOCK_ERR     SOCKET_ERROR
+#define sock_close   closesocket
+#define sock_errno   WSAGetLastError()
+
 #else
     #include <sys/socket.h>
     #include <netinet/in.h>
@@ -1045,7 +1051,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 				//if (ConnectSocket == INVALID_SOCKET) {           // close old one first
 				if (ConnectSocket == INVALID_SOCK) {
 					//closesocket(ConnectSocket);
-					close(ConnectSocket);
+					sock_close(ConnectSocket);
 					connectionAquired = false;                   // reset connection flag
 					if (debugMode)
 						console.appendf("\n[-] Invalid Socket Passed into Networking Threads! wow!\n");
@@ -1088,7 +1094,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 						console.appendf("[-] Unable to connect to server! [%d]\n", error_code);
 						scrollToBottom = true;
 						//closesocket(ConnectSocket);
-						close(ConnectSocket);
+						sock_close(ConnectSocket);
 						//ConnectSocket = INVALID_SOCKET;
 						ConnectSocket = INVALID_SOCK;
 						connectionAquired = false;
@@ -1119,7 +1125,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 			}
 			else {
 				//closesocket(ConnectSocket);
-				close(ConnectSocket);
+				sock_close(ConnectSocket);
 				ConnectSocket = INVALID_SOCK;
 				connectionAquired = false;
 				isNetworkConnected = false;
