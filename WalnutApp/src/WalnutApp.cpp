@@ -90,8 +90,9 @@ int m_OpenComPort = -1;
 
 // Background thread for polling serial port
 std::thread g_SerialPollThread;
+std::string serialLineBuffer;  // obligatory buffer for incoming serial data that may not come in as a full line. gets printed when a newline is detected.
 
-bool debugMode = false;
+bool debugMode = true;
 
 double IN_flashStartTime = 0.0;
 double OUT_flashStartTime = 0.0;
@@ -180,21 +181,74 @@ void serialPollLoop()
 {
 	const int BUF_SIZE = 1024;
 	std::vector<unsigned char> buf(BUF_SIZE);
+	console.appendf("[+] Starting Serial Polling Thread...\n");
 	while (!stopThreads) {
+		//printf("Poll tick, port: %d\n", m_OpenComPort);  // add this
 		if (m_OpenComPort != -1) {
-			int n = RS232_PollComport(m_OpenComPort, buf.data(), BUF_SIZE-1);
+			#ifdef _WIN32
+				int n = RS232_PollComport(m_OpenComPort, buf.data(), BUF_SIZE-1);
+				printf("Polled COM %d, got %d bytes\n", m_OpenComPort, n);
+			#else
+				int n = RS232_PollComport(m_OpenComPort, buf.data(), BUF_SIZE-1);
+				//printf("Polled COM %s, got %d bytes\n", comports[m_OpenComPort], n);
+				
+			#endif
 			if (n > 0) {
+				printf("Polled COM %s, got %d bytes\n", comports[m_OpenComPort], n);
+				
+				if (debugMode) {
+					std::string hexStr;
+					for (int i = 0; i < n; i++) {
+						char byteHex[4];
+						snprintf(byteHex, sizeof(byteHex), "%02X ", buf[i]);
+						hexStr += byteHex;
+					}
+					printf("Received bytes in hex: %s\n", hexStr.c_str());
+				}
+
+
 				buf[n] = '\0';
-				std::string s(reinterpret_cast<char*>(buf.data()), n);
-				IN_flashStartTime = ImGui::GetTime();
-				Out.append("\n [+] " + s);
-				console.appendf("\n[+] RECEIVED: %s\n", s.c_str());
-				scrollToBottom = true;
-				inputTriggerLED = true;
-				fflush(stdout);
+				serialLineBuffer += std::string(reinterpret_cast<char*>(buf.data()), n);
+						
+				// extract complete lines
+				size_t pos;
+				while ((pos = serialLineBuffer.find('\n')) != std::string::npos) {
+					std::string line = serialLineBuffer.substr(0, pos);
+					serialLineBuffer.erase(0, pos + 1);
+					
+					// strip trailing \r if present
+					if (!line.empty() && line.back() == '\r') {
+						line.pop_back();
+					}
+					
+					if (!line.empty()) {  // skip blank lines
+						console.appendf("\n[+] RECEIVED: %s\n", line.c_str());
+						inputTriggerLED = true;
+						scrollToBottom = true;
+					}
+							
+					// now you have a complete line
+					//console.appendf("\n[+] RECEIVED: %s\n", line.c_str());
+
+					IN_flashStartTime = ImGui::GetTime();
+					inputTriggerLED = true;
+					scrollToBottom = true;
+					serialLineBuffer = ""; // clear buffer after processing
+
+					fflush(stdout);
+				}
+					
+				//buf[n] = '\0';
+				//std::string s(reinterpret_cast<char*>(buf.data()), n);
+				//IN_flashStartTime = ImGui::GetTime();
+				//Out.append("\n [+] " + s);
+				//console.appendf("\n[+] RECEIVED: %s\n", s.c_str());
+				//scrollToBottom = true;	
+				//inputTriggerLED = true;
+				//fflush(stdout);
 			}
 		}
-		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+		//std::this_thread::sleep_for(std::chrono::milliseconds(10));
 	}
 	return;
 }
@@ -267,7 +321,7 @@ void AttemptConnect(SaveData data) {
     if (ConnectSocket == INVALID_SOCK) {
         int error_code = sock_errno;
         printf("\n[-] Failed to create socket. Error: %d\n", error_code);
-        console.appendf("[-] Failed to create socket. Error: %d\n", error_code);
+        console.appendf("\n[-] Failed to create socket. Error: %d\n", error_code);
         scrollToBottom = true;
         return;
     }
@@ -545,36 +599,25 @@ public:
 			}
 		}
 
-		#ifdef _WIN32
-			// Scan for COM ports on Initialization.
-			wchar_t lpTargetPath[5000];
-			for (int i = 0; i < 255; i++) {
-				std::wstring str = L"COM" + std::to_wstring(i); // converting to COM0, COM1, COM2
-				DWORD res = QueryDosDevice(str.c_str(), lpTargetPath, 5000);
-
-				// Test the return value and error if any
-				if (res != 0) //QueryDosDevice returns zero if it didn't find an object
-				{
-					m_ComPorts.push_back(i);
-					//std::cout << str << ": " << lpTargetPath << std::endl;
+			#if defined(_WIN32)
+            	// Refresh COM port list each frame so dropdown stays up-to-date
+				m_ComPorts.clear();
+				wchar_t lpTargetPath[5000];
+				for (int i = 0; i < 255; i++) {
+					std::wstring str = L"COM" + std::to_wstring(i);
+					DWORD res = QueryDosDevice(str.c_str(), lpTargetPath, 5000);
+					if (res != 0) {
+						m_ComPorts.push_back(i);
+					}
 				}
-				if (::GetLastError() == ERROR_INSUFFICIENT_BUFFER)
-				{
-				}
-
-			}
-		#else
-    		// Linux serial port enumeration
-    		for (auto& p : std::filesystem::directory_iterator("/dev")) {
-        		std::string name = p.path().filename().string();
-        		if (name.find("ttyS") == 0 || name.find("ttyUSB") == 0 
-            		|| name.find("ttyACM") == 0) {
-            		// add to your port list
-					// need to look up rs232 lib func. 
-					m_ComPorts;
-        		}
-    		}
-		#endif
+			#else
+    			// Check which ports from the RS232 library's list actually exist
+    			m_ComPorts.clear();
+    			for (int i = 0; i < RS232_PORTNR; i++) {
+        			if (std::filesystem::exists(comports[i]))
+            		m_ComPorts.push_back(i);
+    			}
+			#endif
 	}
 
 
@@ -785,9 +828,17 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 
 				std::vector<unsigned char> buf(msg.begin(), msg.end()); // mutable
 
+				#ifdef _WIN32
 				int result = RS232_SendBuf(m_ComPorts.at(m_SelectedPort) - 1,
 					buf.data(),               // unsigned char * (non-const)
 					static_cast<int>(buf.size()));
+				#else
+				int result = RS232_SendBuf(m_ComPorts.at(m_SelectedPort),
+					buf.data(),               // unsigned char * (non-const)
+					static_cast<int>(buf.size()));
+				#endif
+
+
 				console.appendf("[+] Sent to COM%d: %s\n", m_ComPorts.at(m_SelectedPort), msg.c_str());
 				outputTriggerLED = true; // trigger LED on send
 				if (result < 0) {
@@ -882,8 +933,7 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 		if (ImGui::BeginPopup(popup_id.c_str(), ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove)) {
 			//ImGui::BeginChild((popup_id + std::string("_child")).c_str(), ImVec2(width, dropdownMaxHeight), false, /*ImGuiWindowFlags_NoScrollWithMouse*/ 0);
 			ImGui::BeginChild((popup_id + std::string("_child")).c_str(), 
-    ImVec2(width, dropdownMaxHeight - ImGui::GetStyle().WindowPadding.y * 2), 
-    false, 0);
+    		ImVec2(width, dropdownMaxHeight - ImGui::GetStyle().WindowPadding.y * 2), false, 0);
 			for (int i = 0; i < (int)items.size(); ++i) {
 				bool isSelected = (selectedIndex == i);
 				#ifdef _WIN32
@@ -906,19 +956,35 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 
 
 
-					int portIndex = items[i] -1;
+					#ifdef _WIN32
+						int portIndex = items[i] - 1;
+					#else
+						int portIndex = items[i];
+					#endif
 					if (m_OpenComPort != -1 && m_OpenComPort != portIndex) {
+						printf("Closing previously open COM port.\n");
 						RS232_CloseComport(m_OpenComPort);
 						m_OpenComPort = -1;
 					}
+
 					char mode[] = { '8','N','1',0 };
+
+					#ifdef _WIN32
+						console.appendf("[*] Attempting to open COM%d with baudrate %d...\n", portIndex + 1, m_SaveData.baudrate);
+					#else
+						console.appendf("[*] Attempting to open COM%s with baudrate %d...\n", comports[portIndex], m_SaveData.baudrate);
+					#endif
+
 					int openRes = RS232_OpenComport(portIndex, m_SaveData.baudrate, mode, 0);
+					
 					if (openRes != 0) {
-						console.appendf("[-] Error opening COM%d: ret=%d\n", portIndex + 1, openRes);
+						
 						#ifdef _WIN32
+						console.appendf("[-] Error opening COM%d: ret=%d\n", portIndex + 1, openRes);
 						DWORD winErr = GetLastError();
 						console.appendf("    OS Error: GetLastError=%lu\n", (unsigned long)winErr);
 						#else
+						console.appendf("[-] Error opening COM%s: ret=%d\n", comports[items[i]], openRes);
 						console.appendf("    OS Error: errno=%d (%s)\n", errno, strerror(errno));
 						#endif
 						isComPortConnected = false;
@@ -926,7 +992,11 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 						selectedIndex = i;
 						m_OpenComPort = portIndex;
 						isComPortConnected = true;
+						#ifdef _WIN32
 						console.appendf("[+] Connected to com port: COM%d (idx=%d)\n", items[i], i);
+						#else
+						console.appendf("[+] Connected to com port: %s (idx=%d)\n", comports[items[i]], i);
+						#endif
 						selectionChanged = true;
 						// start comport thread 
 						//if (!g_SerialPollThread.joinable()) {
@@ -1009,7 +1079,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 		
 		if (outputTriggerLED) {
 			comPortHasOutput = true;
-			printf("%f", (ImGui::GetTime() - OUT_flashStartTime));
+			//printf("%f", (ImGui::GetTime() - OUT_flashStartTime));
 			if ((ImGui::GetTime() - OUT_flashStartTime) >= FLASH_DURATION) {
 				outputTriggerLED = false;
 				comPortHasOutput = false;
@@ -1096,6 +1166,9 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 					}
 					else {
 						send(ConnectSocket, "W", 1, 0); // initial handshake or ping!
+						// this is for the Proxy or a basic auth. 'W' means Walnut. 'P' is Pico.
+						// The Pico closes connection without this on purpose.
+						// Feel Free to comment or delete this line if it is of No use to you.
 
 						// Launch threads
 						//SOCKET sockCopy = ConnectSocket;   // copy while it�s still valid, IDK why this works but static_cast doesn't?
@@ -1248,10 +1321,12 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 				int len = strlen(m_UserInput); // safer than looping
 				char sendBuffer[130]; // 128 + \n + \0
 				memcpy(sendBuffer, m_UserInput, len);
-				//sendBuffer[len] = '\n';  // newline to trigger Arduino parsing? LOL
-				//sendBuffer[len + 1] = '\0';
-				sendBuffer[len] = '\r';  // newline to trigger Arduino parsing? LOL
-				sendBuffer[len + 1] = '\n';
+				if (len > 128) len = 128; // guard against overflow
+				//sendBuffer[len]     = '\r';
+				//sendBuffer[len + 1] = '\n';
+				//sendBuffer[len + 2] = '\0';
+				sendBuffer[len]     = '\n'; // ImGUI InputText with EnterReturnsTrue does not include the newline in the buffer, so we add it manually.
+				sendBuffer[len + 1] = '\0';
 
 
 				if (debugMode) {
@@ -1262,17 +1337,17 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 					console.appendf("___________________________________\n");
 					console.appendf("00 01 02 03 04 05 06 07  | ascii  |\n");
 					console.appendf("___________________________________\n");
-					for (int i = 0; i < len; i += COLS) {
+					for (int i = 0; i < len + 1; i += COLS) {
 						for (int j = 0; j < COLS; j++) {
-							unsigned char b = (i + j < len) ? (unsigned char)sendBuffer[i + j] : 0x00;
+							unsigned char b = (i + j < len + 1) ? (unsigned char)sendBuffer[i + j] : 0x00; // fixed
 							printf("%s%02X", j ? " " : "", b);
 							console.appendf("%s%02X", j ? " " : "", b);
 						}
 						printf("  |");
 						console.appendf("  |");
 						for (int j = 0; j < COLS; j++) {
-							unsigned char b = (i + j < len) ? (unsigned char)sendBuffer[i + j] : 0x00;
-							char ch = (i + j < len) ? ((b >= 32 && b < 127) ? b : '.') : '0';
+							unsigned char b = (i + j < len + 1) ? (unsigned char)sendBuffer[i + j] : 0x00;
+							char ch = (i + j < len + 1) ? ((b >= 32 && b < 127) ? b : '.') : ' ';
 							printf("%c", ch);
 							console.appendf("%c", ch);
 						}
@@ -1304,19 +1379,29 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 				if (!m_NetworkMode) {
 					// Write to COM port.
 					//int e = RS232_SendBuf(m_ComPorts.at(m_SelectedPort) - 1, reinterpret_cast<unsigned char*>(m_UserInput), i+1);
-					int result = RS232_SendBuf(m_ComPorts.at(m_SelectedPort) - 1, reinterpret_cast<unsigned char*>(sendBuffer), len + 1);
-					//RS232_cputs((m_ComPorts.at(m_SelectedPort) - 1), m_UserInput);
+					#ifdef _WIN32
+						int result = RS232_SendBuf(m_ComPorts.at(m_SelectedPort) -1, reinterpret_cast<unsigned char*>(sendBuffer), len + 1);
+						//RS232_cputs((m_ComPorts.at(m_SelectedPort) - 1), m_UserInput);
+					#else
+						int result = RS232_SendBuf(m_ComPorts.at(m_SelectedPort), reinterpret_cast<unsigned char*>(sendBuffer), len + 1);
+						//RS232_cputs((m_ComPorts.at(m_SelectedPort) - 1), m_UserInput);
+					#endif
+
 
 					if (result < 0) {
 						printf("\nWriting failed! Port: %d", m_ComPorts.at(m_SelectedPort));
 						console.appendf("\n[-] Writing failed! Port: COM%d", m_ComPorts.at(m_SelectedPort));
-						printf("\n%.*s", len, sendBuffer);
-						console.appendf("\n%.*s", len, sendBuffer);
+						printf("\n%.*s\n", len, sendBuffer);
+						console.appendf("\n%.*s\n", len, sendBuffer);
 						scrollToBottom = true;
 						comPortHasOutput = false; 
 					}
 					printf("\nWrote %d bytes on Comport %d\n", result, m_ComPorts.at(m_SelectedPort));
+					#ifdef _WIN32
 					console.appendf("\n[+] Wrote %d bytes on COM%d\n", result, m_ComPorts.at(m_SelectedPort));
+					#else
+					console.appendf("\n[+] Wrote %d bytes on %s\n", result, comports[m_ComPorts.at(m_SelectedPort)]);
+					#endif
 					comPortHasOutput = true;
 
 				}
@@ -1456,6 +1541,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 
 public:
 	static char* m_UserInput; // Obligatory buffer for user input.
+	
 	float m_MouseX = 0;
 	float m_MouseY = 0;
 
