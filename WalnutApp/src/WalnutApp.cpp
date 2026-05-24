@@ -2,6 +2,8 @@
 #include "Walnut/EntryPoint.h"
 #include <imgui_internal.h>
 #include "Walnut/Image.h"
+#include "NerveSystemLayer.h"
+#include "NerveERROR.h"
 
 #include <thread>
 #include <chrono>
@@ -19,8 +21,8 @@
 #include <sstream>
 
 
-
-
+extern EvaErrorLayer* g_ErrorLayer;
+//inline EvaErrorLayer* g_ErrorLayer = nullptr;
 
 /// Global variables
 
@@ -392,6 +394,7 @@ void OpenSettingsFile()
 		ImGui::InputText("IP address", ipbuf, sizeof(ipbuf));
 		ImGui::InputText("Port", portbuf, sizeof(portbuf));
 		ImGui::InputText("Baud rate", baudbuf, sizeof(baudbuf));
+		ImGui::Checkbox("Debug Mode", &debugMode);
 
 		ImGui::PopStyleColor(3);
 
@@ -529,6 +532,11 @@ public:
 
 
 	virtual void OnAttach() override {
+
+		//g_ErrorLayer = new EvaErrorLayer();
+		//    m_ErrorLayer = new EvaErrorLayer();
+    	//GetApplication()->PushLayer(g_ErrorLayer);
+		
 
 		ImGuiStyle& style = ImGui::GetStyle();
 		ImVec4* colors = style.Colors;
@@ -952,6 +960,7 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 						m_OpenComPort = -1;
 						isComPortConnected = false;
 						console.appendf("[*] Closed previously open COM port.\n");
+						g_ErrorLayer->TriggerError("SERIAL LINK FAILURE");
 					}
 
 
@@ -1109,6 +1118,7 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 		if (ImGui::Button("Toggle Serial/Network")) {
 			m_NetworkMode = !m_NetworkMode;
 			console.appendf("[+] Application Mode Switched: [%s]\n", m_NetworkMode ? "Network" : "Serial");
+			g_ErrorLayer->TriggerError("SERIAL LINK FAILURE");
 			scrollToBottom = true;
 
 			if (m_NetworkMode) {
@@ -1550,6 +1560,8 @@ public:
 	bool comPortHasInput = false;
 	bool comPortHasOutput = false;
 
+	//EvaErrorLayer* g_ErrorLayer = nullptr;
+
 private:
 
 	std::vector<int> m_ComPorts; // Dynamic array of available COM ports.
@@ -1585,6 +1597,11 @@ Walnut::Application* Walnut::CreateApplication(int argc, char** argv)
 
 	Walnut::Application* app = new Walnut::Application(spec);
 	app->PushLayer<ExampleLayer>();
+	app->PushLayer<NerveSystemLayer>();
+	//app->PushLayer<NerveErrorLayer>();
+	//app->PushLayer<EvaErrorLayer>();
+	app->PushLayer<EvaErrorLayer>();
+
 	app->SetMenubarCallback([app]()
 	{
 		if (ImGui::BeginMenu("File"))
