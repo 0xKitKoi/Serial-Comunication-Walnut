@@ -16,6 +16,7 @@ public:
         ImVec2 BasePos;
         float Radius;
         float Phase;
+        float Infection = 0.0f;
     };
 
     void OnUIRender() override;
@@ -25,6 +26,17 @@ public:
 
 private:
 
+    float m_InfectionTime = 0.0f;
+    float m_WaveSpeed = 500.0f;//140.0f;
+
+    bool m_Resetting = false;
+    float m_ResetTimer = 0.0f;
+    float m_ResetDuration = 0.33f;//0.55f;
+
+    void Reset();
+    void DrawFilledHex(ImDrawList* draw, ImVec2 c, float r, ImU32 col);
+    void DrawTriangleUp(ImDrawList* draw, ImVec2 c, float s);
+    void DrawTriangleDown(ImDrawList* draw, ImVec2 c, float s);
     // =========================================================
     // STATE
     // =========================================================
