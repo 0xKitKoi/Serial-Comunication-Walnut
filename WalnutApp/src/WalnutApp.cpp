@@ -4,6 +4,7 @@
 #include "Walnut/Image.h"
 #include "NerveSystemLayer.h"
 #include "NerveERROR.h"
+#include "NERVTelemetry.h"
 
 #include <thread>
 #include <chrono>
@@ -100,7 +101,7 @@ int m_OpenComPort = -1;
 std::thread g_SerialPollThread;
 std::string serialLineBuffer;  // obligatory buffer for incoming serial data that may not come in as a full line. gets printed when a newline is detected.
 
-bool debugMode = true;
+bool debugMode = false;
 
 double IN_flashStartTime = 0.0;
 double OUT_flashStartTime = 0.0;
@@ -110,6 +111,8 @@ bool outputTriggerLED = false;
 
 static bool refocusTextBox = false;
 static bool scrollToBottom = false;
+
+EvaBinaryPanel g_NERVTELEMETRY;
 
 
 
@@ -587,6 +590,8 @@ public:
 
 
 	virtual void OnAttach() override {
+		g_NERVTELEMETRY.PushString("NERV Telemetry");
+		
 
 		//g_ErrorLayer = new EvaErrorLayer();
 		//    m_ErrorLayer = new EvaErrorLayer();
@@ -1714,7 +1719,7 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 			ImU32 fillColor = IM_COL32(0, 0, 0, 200);
 			draw_list->AddRectFilled(coordBoxPos, coordBoxEnd, fillColor, 6.0f);
 
-			ImVec2 innerPos = ImVec2(coordBoxPos.x + 20, coordBoxPos.y /*+ 10*/);
+			ImVec2 innerPos = ImVec2(coordBoxPos.x + 20, coordBoxPos.y + 10);
 			ImGui::SetCursorScreenPos(innerPos);
 
 			// Glowing green text
@@ -1722,6 +1727,27 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 			ImGui::Text("Mouse X: %.1f", m_MouseX);
 			ImGui::Text(" Mouse Y: %.1f", m_MouseY);
 			ImGui::PopStyleColor();
+
+			ImGui::Spacing();
+			ImGui::Spacing();
+			ImGui::Spacing();
+			ImGui::Spacing();
+			ImGui::Spacing();
+
+			// Kill Comport Button
+			if (ImGui::Button("KILL COMPORT")) {
+				RS232_CloseComport(m_OpenComPort);
+				console.append("\n[!] COMPORT KILLED FORCEFULLY.\n");
+			}
+
+
+			static ImVec2 debugPos = { 430, 670 };
+
+			//ImGui::DragFloat2("Panel Pos", (float*)&debugPos, 1.0f);
+			// push current buffer whatever it is
+			g_NERVTELEMETRY.PushString(console.c_str());
+			g_NERVTELEMETRY.Render(debugPos);
+
 
 			// Add spacing afterward if needed
 			ImGui::Dummy(ImVec2(coordBoxSize.x, coordBoxSize.y));
@@ -1869,7 +1895,7 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 
 
 			// Console Output Area
-			ImGui::BeginChild("Console", ImVec2(0, 300), true, ImGuiWindowFlags_HorizontalScrollbar);
+			ImGui::BeginChild("Console", ImVec2(0, 400), true, ImGuiWindowFlags_HorizontalScrollbar);
 			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.65f, 0.0f, 1.0f));
 			console.append("\n");
 			ImGui::InputTextMultiline(
@@ -2013,7 +2039,7 @@ Walnut::Application* Walnut::CreateApplication(int argc, char** argv)
 
 	Walnut::ApplicationSpecification spec;
 	spec.Name = "Serial Comunication Walnut App";
-	spec.Height = 700;
+	spec.Height = 900;
 	spec.Width = 1600;
 
 
