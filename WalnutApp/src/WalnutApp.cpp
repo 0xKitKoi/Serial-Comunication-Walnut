@@ -1253,6 +1253,50 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 		dl->AddRect(rMin, rMax, hotColor, rounding, 0, 1.5f);
 	}
 
+	// One call for any rect in your UI
+	static void EVAGlow(ImDrawList* dl, ImVec2 rMin, ImVec2 rMax, float rounding = 4.0f)
+	{
+		DrawGlowBorder(dl, rMin, rMax,
+			IM_COL32(247, 183, 32, 255),   // #F7B720
+			IM_COL32(149, 43,  32, 255),   // #952B20
+			rounding, 8, 1.1f);
+	}
+
+	// Then usage is just one line anywhere:
+	//EVAGlow(ImGui::GetWindowDrawList(), wMin, wMax);
+	//EVAGlow(ImGui::GetWindowDrawList(), btnMin, btnMax, 3.0f);
+
+	static void DrawEVALabel(ImDrawList* dl, const char* label, ImVec2 pos)
+	{
+		// ── Uppercase ─────────────────────────────────────────────
+		char upper[128];
+		int i = 0;
+		for (; label[i] && i < 127; ++i)
+			upper[i] = (char)toupper((unsigned char)label[i]);
+		upper[i] = '\0';
+
+		const float padX     = 10.0f;
+		const float padY     = 5.0f;
+		const float rounding = 3.0f;
+
+		ImVec2 textSize = ImGui::CalcTextSize(upper);
+
+		ImVec2 rMin = pos;
+		ImVec2 rMax = ImVec2(pos.x + textSize.x + padX * 2.0f,
+							pos.y + textSize.y + padY * 2.0f);
+
+		// Black fill
+		dl->AddRectFilled(rMin, rMax, IM_COL32(0, 0, 0, 220), rounding);
+
+		// Orange glow border
+		EVAGlow(dl, rMin, rMax, rounding);
+
+		// Text centered inside
+		ImVec2 textPos = ImVec2(rMin.x + padX, rMin.y + padY);
+		dl->AddText(textPos, IM_COL32(247, 183, 32, 255), upper);
+	}
+
+
 	void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 	{
 		ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -1401,8 +1445,11 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 
 	virtual void OnUIRender() override
 	{	
+		ImFont* evaFont = ImGui::GetIO().Fonts->Fonts[1];
 
-		ImGui::Begin("Laser Turret Control Panel");
+		ImGui::PushFont(evaFont);
+		
+		ImGui::Begin("SerialMonitor NERV Style");
 		ImGui::SetNextWindowBgAlpha(0.82f);
 		ImGuiStyle& style = ImGui::GetStyle();
 
@@ -1452,11 +1499,37 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 		//else { comPortHasInput = false; }
 
 		// Network / Serial Toggle
-		ImGui::Text("Sending All Data over Mode: ");
+
+		//ImGui::PushFont(evaFont);
+
+		// Calculate label height so we can center the text against it
+		float labelH = ImGui::GetTextLineHeight() + 10.0f; // padY * 2
+		float textH  = ImGui::GetTextLineHeight();
+		float verticalOffset = (labelH - textH) * 0.5f;
+		DrawEVALabel(ImGui::GetWindowDrawList(), "ALL DATA TRANSMITS OVER: ", ImGui::GetCursorScreenPos());
+		///ImGui::PopFont();
+
+		// Advance the cursor so the next widget doesn't overlap
+		ImGui::Dummy(ImVec2(
+			ImGui::CalcTextSize("ALL DATA TRANSMITS OVER: ").x + 20.0f + 20.0f,  // rough width
+			ImGui::GetTextLineHeight() + 10.0f + 8.0f               // height + glow spread
+		));
+		//ImGui::Text(" ALL DATA TRANSMITS OVER: ");
 		ImGui::SameLine();
+		// Nudge cursor down to vertically align text with label center
+		ImGui::SetCursorPosY(ImGui::GetCursorPosY() + verticalOffset);
 		ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), m_NetworkMode ? "Network ( Server IP:PORT in Settings )" : "Serial ( COM Port Selected in DropDown Menu )");
 
 		ImGui::SameLine();
+		//ImGui::SetCursorPosY(ImGui::GetCursorPosY() + verticalOffset);
+		//EVAGlow(ImGui::GetWindowDrawList(), wMin, wMax);
+		//ImVec2 btnMin = ImGui::GetCursorScreenPos();
+		//float  btnW   = 120.0f;
+		//float  btnH   = 30.0f;
+		//ImVec2 btnMax = ImVec2(btnMin.x + btnW, btnMin.y + btnH);
+		//EVAGlow(ImGui::GetWindowDrawList(), btnMin, btnMax, 3.0f);
+
+
 		if (ImGui::Button("Toggle Serial/Network")) {
 			m_NetworkMode = !m_NetworkMode;
 			console.appendf("[+] Application Mode Switched: [%s]\n", m_NetworkMode ? "Network" : "Serial");
@@ -1571,9 +1644,9 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 		ImVec2 indicatorStart = ImGui::GetCursorScreenPos();
 		float time = ImGui::GetTime();
 
-		ImFont* evaFont = ImGui::GetIO().Fonts->Fonts[1];
+		//ImFont* evaFont = ImGui::GetIO().Fonts->Fonts[1];
 
-		ImGui::PushFont(evaFont);
+		//ImGui::PushFont(evaFont);
 
 		
 		DrawRetroStatusLED("Networking",isNetworkConnected,  indicatorStart);
@@ -1582,7 +1655,7 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 		DrawRetroStatusLED("COM In", inputTriggerLED, ImVec2(indicatorStart.x, indicatorStart.y + 80));
 		/*DrawRetroStatusLED("COM Out", comPortHasOutput, ImVec2(indicatorStart.x, indicatorStart.y + 75));*/
 		DrawRetroStatusLED("COM Out", outputTriggerLED, ImVec2(indicatorStart.x, indicatorStart.y + 120));
-		ImGui::PopFont();
+		//ImGui::PopFont();
 		// Use Dummy to push the cursor so the next widgets don't overlap
 		ImGui::Dummy(ImVec2(150, 80)); // reserve space
 
@@ -1892,7 +1965,7 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 		ImGui::End(); // End main window
 		//DrawVHSOverlay();
 
-		
+		ImGui::PopFont();
 	}
 
 
@@ -1940,8 +2013,8 @@ Walnut::Application* Walnut::CreateApplication(int argc, char** argv)
 
 	Walnut::ApplicationSpecification spec;
 	spec.Name = "Serial Comunication Walnut App";
-	spec.Height = 600;
-	spec.Width = 1200;
+	spec.Height = 700;
+	spec.Width = 1600;
 
 
 	Walnut::Application* app = new Walnut::Application(spec);
