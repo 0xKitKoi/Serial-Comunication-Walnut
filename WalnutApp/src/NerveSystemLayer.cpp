@@ -1,6 +1,42 @@
 #include "NerveSystemLayer.h"
 #include "rs232.h" // Your serial library header
 
+// Call this right after ImGui::Begin("My Window") each frame
+static void DrawEVAGlowBorder(float rounding = 4.0f)
+{
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImVec2 p = ImGui::GetWindowPos();
+    ImVec2 sz = ImGui::GetWindowSize();
+    ImVec2 pmax = ImVec2(p.x + sz.x, p.y + sz.y);
+
+    // Layer outward: each rect is 1px larger, color shifts dark-red → gold
+    // Format: AddRect(min, max, color, rounding, flags, thickness)
+
+    // Outermost — deep red, ghostly
+    dl->AddRect(
+        ImVec2(p.x - 3, p.y - 3), ImVec2(pmax.x + 3, pmax.y + 3),
+        IM_COL32(149, 43, 32, 80),   // #952B20, low alpha
+        rounding + 3, 0, 1.0f);
+
+    // Mid-outer — burnt orange
+    dl->AddRect(
+        ImVec2(p.x - 2, p.y - 2), ImVec2(pmax.x + 2, pmax.y + 2),
+        IM_COL32(199, 84, 51, 160),  // #C75433
+        rounding + 2, 0, 1.0f);
+
+    // Inner glow — amber
+    dl->AddRect(
+        ImVec2(p.x - 1, p.y - 1), ImVec2(pmax.x + 1, pmax.y + 1),
+        IM_COL32(244, 144, 39, 220), // #F49027
+        rounding + 1, 0, 1.5f);
+
+    // Innermost — hot gold, full brightness, thicker
+    dl->AddRect(
+        p, pmax,
+        IM_COL32(247, 183, 32, 255), // #F7B720
+        rounding, 0, 2.0f);
+}
+
 void NerveSystemLayer::OnAttach()
 {
     // Open your serial port here
@@ -42,7 +78,7 @@ void NerveSystemLayer::CheckPortStatus()
 void NerveSystemLayer::OnUIRender()
 {
     ImGui::Begin("NERV - Serial Control System");
-    
+    DrawEVAGlowBorder();
     // Update animations
     float dt = ImGui::GetIO().DeltaTime;
     m_CtsSignal.Update(dt);

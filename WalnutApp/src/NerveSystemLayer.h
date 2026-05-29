@@ -1,6 +1,7 @@
 #pragma once
 #include "Walnut/Layer.h"
 #include "imgui.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 

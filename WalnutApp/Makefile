@@ -85,8 +85,12 @@ endif
 GENERATED :=
 OBJECTS :=
 
+GENERATED += $(OBJDIR)/NerveERROR.o
+GENERATED += $(OBJDIR)/NerveSystemLayer.o
 GENERATED += $(OBJDIR)/WalnutApp.o
 GENERATED += $(OBJDIR)/rs232.o
+OBJECTS += $(OBJDIR)/NerveERROR.o
+OBJECTS += $(OBJDIR)/NerveSystemLayer.o
 OBJECTS += $(OBJDIR)/WalnutApp.o
 OBJECTS += $(OBJDIR)/rs232.o
 
@@ -155,6 +159,12 @@ endif
 $(OBJDIR)/rs232.o: ../RS-232/rs232.c
 	@echo "$(notdir $<)"
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
+$(OBJDIR)/NerveERROR.o: src/NerveERROR.cpp
+	@echo "$(notdir $<)"
+	$(SILENT) $(CXX) $(ALL_CXXFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
+$(OBJDIR)/NerveSystemLayer.o: src/NerveSystemLayer.cpp
+	@echo "$(notdir $<)"
+	$(SILENT) $(CXX) $(ALL_CXXFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 $(OBJDIR)/WalnutApp.o: src/WalnutApp.cpp
 	@echo "$(notdir $<)"
 	$(SILENT) $(CXX) $(ALL_CXXFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"

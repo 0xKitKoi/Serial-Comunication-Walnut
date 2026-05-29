@@ -1,7 +1,9 @@
 #include "NerveERROR.h"
 
-#include <imgui.h>
+
+#define _USE_MATH_DEFINES
 #include <cmath>
+#include <imgui.h>
 
 
 EvaErrorLayer* g_ErrorLayer = nullptr;

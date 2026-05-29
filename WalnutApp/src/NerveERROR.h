@@ -4,6 +4,11 @@
 #include <imgui.h>
 #include <string>
 #include <vector>
+#define _USE_MATH_DEFINES
+#include <cmath>
+#ifndef M_PI
+#   define M_PI 3.1415926535897932384626433832
+#endif
 
 class EvaErrorLayer : public Walnut::Layer
 {

@@ -20,7 +20,7 @@
 #include <fstream>
 #include <sstream>
 
-
+//ImFont* evaFont = ImGui::GetIO().Fonts->Fonts[1];
 extern EvaErrorLayer* g_ErrorLayer;
 //inline EvaErrorLayer* g_ErrorLayer = nullptr;
 
@@ -196,23 +196,35 @@ void serialPollLoop()
 			#ifdef _WIN32
 				int n = RS232_PollComport(m_OpenComPort, buf.data(), BUF_SIZE-1);
 				printf("Polled COM %d, got %d bytes\n", m_OpenComPort, n);
+				if (n > 0) {
+					printf("Polled COM %s, got %d bytes\n", m_OpenComPort, n);
+
+					if (debugMode) {
+						std::string hexStr;
+						for (int i = 0; i < n; i++) {
+							char byteHex[4];
+							snprintf(byteHex, sizeof(byteHex), "%02X ", buf[i]);
+							hexStr += byteHex;
+						}
+						printf("Received bytes in hex: %s\n", hexStr.c_str());
+					}
 			#else
 				int n = RS232_PollComport(m_OpenComPort, buf.data(), BUF_SIZE-1);
+				if (n > 0) {
+					printf("Polled COM %s, got %d bytes\n", comports[m_OpenComPort], n);
+
+					if (debugMode) {
+						std::string hexStr;
+						for (int i = 0; i < n; i++) {
+							char byteHex[4];
+							snprintf(byteHex, sizeof(byteHex), "%02X ", buf[i]);
+							hexStr += byteHex;
+						}
+						printf("Received bytes in hex: %s\n", hexStr.c_str());
+					}
 				//printf("Polled COM %s, got %d bytes\n", comports[m_OpenComPort], n);
 				
 			#endif
-			if (n > 0) {
-				printf("Polled COM %s, got %d bytes\n", comports[m_OpenComPort], n);
-				
-				if (debugMode) {
-					std::string hexStr;
-					for (int i = 0; i < n; i++) {
-						char byteHex[4];
-						snprintf(byteHex, sizeof(byteHex), "%02X ", buf[i]);
-						hexStr += byteHex;
-					}
-					printf("Received bytes in hex: %s\n", hexStr.c_str());
-				}
 
 
 				buf[n] = '\0';
@@ -499,6 +511,43 @@ void OpenAbout()
 }
 
 
+// Call this right after ImGui::Begin("My Window") each frame
+static void DrawEVAGlowBorder(float rounding = 4.0f)
+{
+	ImDrawList* dl = ImGui::GetWindowDrawList();
+	ImVec2 p = ImGui::GetWindowPos();
+	ImVec2 sz = ImGui::GetWindowSize();
+	ImVec2 pmax = ImVec2(p.x + sz.x, p.y + sz.y);
+
+	// Layer outward: each rect is 1px larger, color shifts dark-red → gold
+	// Format: AddRect(min, max, color, rounding, flags, thickness)
+
+	// Outermost — deep red, ghostly
+	dl->AddRect(
+		ImVec2(p.x - 3, p.y - 3), ImVec2(pmax.x + 3, pmax.y + 3),
+		IM_COL32(149, 43, 32, 80),   // #952B20, low alpha
+		rounding + 3, 0, 1.0f);
+
+	// Mid-outer — burnt orange
+	dl->AddRect(
+		ImVec2(p.x - 2, p.y - 2), ImVec2(pmax.x + 2, pmax.y + 2),
+		IM_COL32(199, 84, 51, 160),  // #C75433
+		rounding + 2, 0, 1.0f);
+
+	// Inner glow — amber
+	dl->AddRect(
+		ImVec2(p.x - 1, p.y - 1), ImVec2(pmax.x + 1, pmax.y + 1),
+		IM_COL32(244, 144, 39, 220), // #F49027
+		rounding + 1, 0, 1.5f);
+
+	// Innermost — hot gold, full brightness, thicker
+	dl->AddRect(
+		p, pmax,
+		IM_COL32(247, 183, 32, 255), // #F7B720
+		rounding, 0, 2.0f);
+}
+
+
 
 class ExampleLayer : public Walnut::Layer
 {
@@ -547,23 +596,94 @@ public:
 		ImGuiStyle& style = ImGui::GetStyle();
 		ImVec4* colors = style.Colors;
 
-		// Black window background
-		colors[ImGuiCol_WindowBg] = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
 
-		// Optional: Black frame backgrounds, buttons, etc.
-		colors[ImGuiCol_ChildBg] = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
-		colors[ImGuiCol_FrameBg] = ImVec4(0.05f, 0.05f, 0.05f, 1.0f);
-		colors[ImGuiCol_PopupBg] = ImVec4(0.05f, 0.05f, 0.05f, 1.0f);
-		colors[ImGuiCol_Header] = ImVec4(0.15f, 0.15f, 0.15f, 1.0f);
-		colors[ImGuiCol_Button] = ImVec4(0.1f, 0.1f, 0.1f, 1.0f);
+		// ── EVA PALETTE ──────────────────────────────────────────────
+		// Center (hottest):  #F7B720  → #F49027
+		// Mid:               #C75433
+		// Outer edge:        #952B20
+		// ─────────────────────────────────────────────────────────────
+
+		// Base colors (as ImVec4, full alpha)
+		//   ImVec4(r, g, b, a)  all values 0–1
+		//   #F7B720  →  (0.969, 0.718, 0.125, 1.0)   hot yellow-gold
+		//   #F49027  →  (0.957, 0.565, 0.153, 1.0)   amber
+		//   #C75433  →  (0.780, 0.329, 0.200, 1.0)   burnt orange
+		//   #952B20  →  (0.584, 0.169, 0.125, 1.0)   deep red
+
+		// ── WINDOW & CHILD BACKGROUNDS ───────────────────────────────
+		// Holographic: nearly black, very slightly transparent
+		colors[ImGuiCol_WindowBg] = ImVec4(0.00f, 0.00f, 0.00f, 0.82f);
+		colors[ImGuiCol_ChildBg] = ImVec4(0.00f, 0.00f, 0.00f, 0.75f);
+		colors[ImGuiCol_PopupBg] = ImVec4(0.02f, 0.00f, 0.00f, 0.90f);
+
+		// ── FRAME / INPUT BACKGROUNDS ────────────────────────────────
+		colors[ImGuiCol_FrameBg] = ImVec4(0.08f, 0.02f, 0.01f, 1.0f);
+		colors[ImGuiCol_FrameBgHovered] = ImVec4(0.20f, 0.06f, 0.02f, 1.0f);
+		colors[ImGuiCol_FrameBgActive] = ImVec4(0.35f, 0.12f, 0.04f, 1.0f);
+
+		// ── TITLE BAR ────────────────────────────────────────────────
+		// Use the deep-red end of the gradient so titles feel "cooler"
+		colors[ImGuiCol_TitleBg] = ImVec4(0.22f, 0.06f, 0.04f, 1.0f); // ~#382010
+		colors[ImGuiCol_TitleBgActive] = ImVec4(0.58f, 0.17f, 0.13f, 1.0f); // #952B20
+		colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.15f, 0.04f, 0.03f, 1.0f);
+
+		// ── FLAT BORDER (fallback / inner ring) ──────────────────────
+		// Use the amber mid-tone — the glow layers below will do the gradient
+		colors[ImGuiCol_Border] = ImVec4(0.957f, 0.565f, 0.153f, 0.90f); // #F49027
+		colors[ImGuiCol_BorderShadow] = ImVec4(0.584f, 0.169f, 0.125f, 0.40f); // #952B20
+
+		// ── BUTTONS ──────────────────────────────────────────────────
+		colors[ImGuiCol_Button] = ImVec4(0.25f, 0.07f, 0.04f, 1.0f);
+		colors[ImGuiCol_ButtonHovered] = ImVec4(0.78f, 0.33f, 0.20f, 1.0f); // #C75433
+		colors[ImGuiCol_ButtonActive] = ImVec4(0.97f, 0.72f, 0.13f, 1.0f); // #F7B720
+
+		// ── HEADERS (CollapsingHeader, TreeNode, Selectable) ─────────
+		colors[ImGuiCol_Header] = ImVec4(0.35f, 0.10f, 0.06f, 1.0f);
+		colors[ImGuiCol_HeaderHovered] = ImVec4(0.58f, 0.17f, 0.13f, 1.0f);
+		colors[ImGuiCol_HeaderActive] = ImVec4(0.78f, 0.33f, 0.20f, 1.0f);
+
+		// ── SCROLLBAR ────────────────────────────────────────────────
+		colors[ImGuiCol_ScrollbarBg] = ImVec4(0.00f, 0.00f, 0.00f, 0.60f);
+		colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.58f, 0.17f, 0.13f, 1.0f);
+		colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.78f, 0.33f, 0.20f, 1.0f);
+		colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.97f, 0.72f, 0.13f, 1.0f);
+
+		// ── CHECKMARK / SLIDER / RESIZE ──────────────────────────────
+		colors[ImGuiCol_CheckMark] = ImVec4(0.97f, 0.72f, 0.13f, 1.0f); // hot gold
+		colors[ImGuiCol_SliderGrab] = ImVec4(0.78f, 0.33f, 0.20f, 1.0f);
+		colors[ImGuiCol_SliderGrabActive] = ImVec4(0.97f, 0.72f, 0.13f, 1.0f);
+		colors[ImGuiCol_ResizeGrip] = ImVec4(0.58f, 0.17f, 0.13f, 0.60f);
+		colors[ImGuiCol_ResizeGripHovered] = ImVec4(0.78f, 0.33f, 0.20f, 1.0f);
+		colors[ImGuiCol_ResizeGripActive] = ImVec4(0.97f, 0.72f, 0.13f, 1.0f);
+
+		// ── TEXT ─────────────────────────────────────────────────────
+		colors[ImGuiCol_Text] = ImVec4(0.97f, 0.72f, 0.13f, 1.0f); // gold text
+		colors[ImGuiCol_TextDisabled] = ImVec4(0.45f, 0.20f, 0.10f, 1.0f);
+
+		// ── SEPARATOR / NAV ──────────────────────────────────────────
+		colors[ImGuiCol_Separator] = ImVec4(0.58f, 0.17f, 0.13f, 0.80f);
+		colors[ImGuiCol_SeparatorHovered] = ImVec4(0.78f, 0.33f, 0.20f, 1.0f);
+		colors[ImGuiCol_SeparatorActive] = ImVec4(0.97f, 0.72f, 0.13f, 1.0f);
+		colors[ImGuiCol_NavHighlight] = ImVec4(0.97f, 0.72f, 0.13f, 1.0f);
+		colors[ImGuiCol_NavWindowingHighlight] = ImVec4(0.97f, 0.72f, 0.13f, 0.70f);
+
+		////////////////////////////////////////// Black window background
+		////////////////////////////////////////colors[ImGuiCol_WindowBg] = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
+
+		////////////////////////////////////////// Optional: Black frame backgrounds, buttons, etc.
+		////////////////////////////////////////colors[ImGuiCol_ChildBg] = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
+		////////////////////////////////////////colors[ImGuiCol_FrameBg] = ImVec4(0.05f, 0.05f, 0.05f, 1.0f);
+		////////////////////////////////////////colors[ImGuiCol_PopupBg] = ImVec4(0.05f, 0.05f, 0.05f, 1.0f);
+		////////////////////////////////////////colors[ImGuiCol_Header] = ImVec4(0.15f, 0.15f, 0.15f, 1.0f);
+		////////////////////////////////////////colors[ImGuiCol_Button] = ImVec4(0.1f, 0.1f, 0.1f, 1.0f);
 
 
 
-		//colors[ImGuiCol_Border] = ImVec4(0.0f, 1.0f, 0.0f, 1.0f); // green
-		//colors[ImGuiCol_Border] = ImVec4(0.0f, 0.8f, 0.0f, 1.0f); // slightly dimmer green
-		//colors[ImGuiCol_Border] = ImVec4(0.0f, 0.6f, 0.0f, 1.0f); // darker, calmer green
-		//colors[ImGuiCol_Border] = ImVec4(0.8f, 0.0f, 0.0f, 1.0f); // dark red
-		colors[ImGuiCol_Border] = ImVec4(0.6f, 0.0f, 0.0f, 1.0f); // darker, calmer red
+		//////////////////////////////////////////colors[ImGuiCol_Border] = ImVec4(0.0f, 1.0f, 0.0f, 1.0f); // green
+		//////////////////////////////////////////colors[ImGuiCol_Border] = ImVec4(0.0f, 0.8f, 0.0f, 1.0f); // slightly dimmer green
+		//////////////////////////////////////////colors[ImGuiCol_Border] = ImVec4(0.0f, 0.6f, 0.0f, 1.0f); // darker, calmer green
+		//////////////////////////////////////////colors[ImGuiCol_Border] = ImVec4(0.8f, 0.0f, 0.0f, 1.0f); // dark red
+		////////////////////////////////////////colors[ImGuiCol_Border] = ImVec4(0.6f, 0.0f, 0.0f, 1.0f); // darker, calmer red
 
 		//colors[ImGuiCol_Border] = ImVec4(0.0f, 1.0f, 1.0f, 1.0f); // bright cyan (full opacity)
 		//colors[ImGuiCol_ChildBg] = ImVec4(0.0f, 0.1f, 0.1f, 1.0f); // very dark teal for contrast
@@ -1036,46 +1156,246 @@ void DrawRetroMousePad() // FOR MOUSE MODE!
 	}
 
 
-void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
-{
-	ImDrawList* draw_list = ImGui::GetWindowDrawList();
-	float time = ImGui::GetTime();
+//void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
+//{
+//	ImDrawList* draw_list = ImGui::GetWindowDrawList();
+//	float time = ImGui::GetTime();
+//
+//	bool flashVisible = fmod(time * 10.0f, 1.0f) < 0.5f;
+//
+//	const float ledWidth = 20.0f;
+//	const float ledHeight = 12.0f;
+//
+//	ImVec2 ledPos = pos;
+//	ImVec2 textPos = ImVec2(pos.x + ledWidth + 8, pos.y + 1);
+//
+//	ImU32 color = isOn ? IM_COL32(0, 255, 0, 255) : IM_COL32(255, 50, 50, 255);
+//	ImU32 glowColor = isOn ? IM_COL32(0, 255, 0, 180) : IM_COL32(255, 50, 50, 180);
+//
+//	if (flashVisible)
+//	{
+//		// Glowing outline (square shape)
+//		for (int i = 0; i < 3; ++i)
+//		{
+//			float grow = static_cast<float>(i);
+//			draw_list->AddRect(
+//				ImVec2(ledPos.x - grow, ledPos.y - grow),
+//				ImVec2(ledPos.x + ledWidth + grow, ledPos.y + ledHeight + grow),
+//				glowColor, 0.0f, 0, 1.5f);
+//		}
+//
+//		// Solid fill (no rounding)
+//		draw_list->AddRectFilled(
+//			ledPos,
+//			ImVec2(ledPos.x + ledWidth, ledPos.y + ledHeight),
+//			color,
+//			0.0f); // No corner rounding
+//	}
+//
+//	// Text
+//	draw_list->AddText(textPos, color, label);
+//}
+	
 
-	bool flashVisible = fmod(time * 10.0f, 1.0f) < 0.5f;
-
-	const float ledWidth = 20.0f;
-	const float ledHeight = 12.0f;
-
-	ImVec2 ledPos = pos;
-	ImVec2 textPos = ImVec2(pos.x + ledWidth + 8, pos.y + 1);
-
-	ImU32 color = isOn ? IM_COL32(0, 255, 0, 255) : IM_COL32(255, 50, 50, 255);
-	ImU32 glowColor = isOn ? IM_COL32(0, 255, 0, 180) : IM_COL32(255, 50, 50, 180);
-
-	if (flashVisible)
+	// ── Helper: draws a glowing filled rect with bloom ────────────
+	static void DrawGlowRect(ImDrawList* dl, ImVec2 rMin, ImVec2 rMax,
+		ImU32 coreColor, ImU32 midColor, ImU32 outerColor,
+		float rounding, int glowLayers = 8, float glowSpread = 1.2f)
 	{
-		// Glowing outline (square shape)
-		for (int i = 0; i < 3; ++i)
+		// Outer bloom — many transparent layers expanding outward
+		for (int i = glowLayers; i >= 1; --i)
 		{
-			float grow = static_cast<float>(i);
-			draw_list->AddRect(
-				ImVec2(ledPos.x - grow, ledPos.y - grow),
-				ImVec2(ledPos.x + ledWidth + grow, ledPos.y + ledHeight + grow),
-				glowColor, 0.0f, 0, 1.5f);
+			float expand = (float)i * glowSpread;
+			// Alpha falls off with distance — further = more transparent
+			int alpha = (int)(120.0f * ((float)(glowLayers - i + 1) / (float)glowLayers)
+				* ((float)(glowLayers - i + 1) / (float)glowLayers)); // quadratic falloff
+
+			// Extract RGB from outerColor and apply our own alpha
+			ImU32 col = (outerColor & 0x00FFFFFF) | ((ImU32)alpha << 24);
+
+			dl->AddRectFilled(
+				ImVec2(rMin.x - expand, rMin.y - expand),
+				ImVec2(rMax.x + expand, rMax.y + expand),
+				col, rounding + expand);
 		}
 
-		// Solid fill (no rounding)
-		draw_list->AddRectFilled(
-			ledPos,
-			ImVec2(ledPos.x + ledWidth, ledPos.y + ledHeight),
-			color,
-			0.0f); // No corner rounding
+		// Core fill — layered from edge inward getting hotter
+		dl->AddRectFilled(rMin, rMax, outerColor, rounding);
+
+		dl->AddRectFilled(
+			ImVec2(rMin.x + 1, rMin.y + 1),
+			ImVec2(rMax.x - 1, rMax.y - 1),
+			midColor, rounding - 0.5f);
+
+		dl->AddRectFilled(
+			ImVec2(rMin.x + 2, rMin.y + 2),
+			ImVec2(rMax.x - 2, rMax.y - 2),
+			coreColor, rounding - 1.0f);
 	}
 
-	// Text
-	draw_list->AddText(textPos, color, label);
-}
+	// ── Helper: draws a glowing border outline only ───────────────
+	static void DrawGlowBorder(ImDrawList* dl, ImVec2 rMin, ImVec2 rMax,
+		ImU32 hotColor, ImU32 outerColor,
+		float rounding, int glowLayers = 6, float glowSpread = 1.2f)
+	{
+		for (int i = glowLayers; i >= 1; --i)
+		{
+			float expand = (float)i * glowSpread;
+			int alpha = (int)(180.0f * ((float)(glowLayers - i + 1) / (float)glowLayers)
+				* ((float)(glowLayers - i + 1) / (float)glowLayers));
+			ImU32 col = (outerColor & 0x00FFFFFF) | ((ImU32)alpha << 24);
+			dl->AddRect(
+				ImVec2(rMin.x - expand, rMin.y - expand),
+				ImVec2(rMax.x + expand, rMax.y + expand),
+				col, rounding + expand, 0, 1.0f);
+		}
+		// Hot inner border
+		dl->AddRect(rMin, rMax, hotColor, rounding, 0, 1.5f);
+	}
 
+	void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
+	{
+		ImDrawList* dl = ImGui::GetWindowDrawList();
+		float time = ImGui::GetTime();
+		bool flashVisible = fmod(time * 6.0f, 1.0f) < 0.5f;
+
+		// ── Uppercase ─────────────────────────────────────────────
+		char upper[128];
+		int i = 0;
+		for (; label[i] && i < 127; ++i)
+			upper[i] = (char)toupper((unsigned char)label[i]);
+		upper[i] = '\0';
+
+		ImVec2 textSize = ImGui::CalcTextSize(upper);
+
+		const float padX = 10.0f;
+		const float padY = 5.0f;
+		const float gap = 6.0f;
+		const float rounding = 3.0f;
+
+		float capsuleH = textSize.y + padY * 2.0f;
+		float capsuleW = textSize.x + padX * 2.0f;
+		ImVec2 capMin = pos;
+		ImVec2 capMax = ImVec2(pos.x + capsuleW, pos.y + capsuleH);
+
+		const float ledW = capsuleH * 0.85f;
+		const float ledRound = 3.0f;
+		ImVec2 ledMin = ImVec2(capMax.x + gap, pos.y);
+		ImVec2 ledMax = ImVec2(capMax.x + gap + ledW, pos.y + capsuleH);
+
+		// ── EVA color palette ─────────────────────────────────────
+		//                          core                mid                  outer
+		ImU32 coreHot = IM_COL32(211, 119, 73, 255); // #D37749
+		ImU32 coreMid = IM_COL32(214, 111, 69, 255); // #D66F45
+		ImU32 coreOuter = IM_COL32(141, 3, 0, 255); // #8D0300
+		ImU32 glowBloom = IM_COL32(127, 0, 2, 255); // #7F0002 — used for bloom spread
+
+		ImU32 borderHot = IM_COL32(214, 111, 69, 255); // #D66F45
+		ImU32 textColor = IM_COL32(247, 183, 32, 255); // #F7B720
+
+		//// ── Capsule: black fill + glowing border ──────────────────
+		//dl->AddRectFilled(capMin, capMax, IM_COL32(0, 0, 0, 220), rounding);
+
+		//DrawGlowBorder(dl, capMin, capMax,
+		//	borderHot, glowBloom, rounding,
+		//	/*layers=*/8, /*spread=*/1.1f);
+
+		//ImVec2 textPos = ImVec2(capMin.x + padX, capMin.y + padY);
+		//dl->AddText(textPos, textColor, upper);
+		// ── Capsule: black fill + ORANGE glowing border ───────────
+	// Replace the border colors with the orange EVA palette
+		ImU32 labelBorderHot = IM_COL32(247, 183, 32, 255); // #F7B720 hot gold
+		ImU32 labelBorderBloom = IM_COL32(149, 43, 32, 255); // #952B20 deep red bloom
+
+		dl->AddRectFilled(capMin, capMax, IM_COL32(0, 0, 0, 220), rounding);
+
+		DrawGlowBorder(dl, capMin, capMax,
+			labelBorderHot, labelBorderBloom, rounding,
+			/*layers=*/8, /*spread=*/1.1f);
+
+		ImVec2 textPos = ImVec2(capMin.x + padX, capMin.y + padY);
+		dl->AddText(textPos, IM_COL32(247, 183, 32, 255), upper);  // #F7B720
+
+		//// ── LED ───────────────────────────────────────────────────
+		//bool ledLit = isOn ? flashVisible : true;
+
+		//if (ledLit)
+		//{
+		//	// Full glowing filled rect — bloom + hot core
+		//	DrawGlowRect(dl, ledMin, ledMax,
+		//		coreHot, coreMid, coreOuter, ledRound,
+		//		/*layers=*/10, /*spread=*/1.2f);
+
+		//	// Hot border on top
+		//	DrawGlowBorder(dl, ledMin, ledMax,
+		//		borderHot, glowBloom, ledRound,
+		//		/*layers=*/6, /*spread=*/1.1f);
+		//}
+		//else
+		//{
+		//	// ON blink — gold bloom
+		//	ImU32 onCore = IM_COL32(247, 183, 32, 255); // #F7B720
+		//	ImU32 onMid = IM_COL32(244, 144, 39, 255); // #F49027
+		//	ImU32 onOuter = IM_COL32(199, 84, 51, 255); // #C75433
+		//	ImU32 onBloom = IM_COL32(149, 43, 32, 255); // #952B20
+
+		//	DrawGlowRect(dl, ledMin, ledMax,
+		//		onCore, onMid, onOuter, ledRound,
+		//		/*layers=*/10, /*spread=*/1.2f);
+
+		//	DrawGlowBorder(dl, ledMin, ledMax,
+		//		onMid, onBloom, ledRound,
+		//		/*layers=*/6, /*spread=*/1.1f);
+		//}
+		// ── LED ───────────────────────────────────────────────────
+		if (isOn)
+		{
+			//// ON — always glowing gold, steady (no flash)
+			//ImU32 onCore = IM_COL32(247, 183, 32, 255); // #F7B720
+			//ImU32 onMid = IM_COL32(244, 144, 39, 255); // #F49027
+			//ImU32 onOuter = IM_COL32(199, 84, 51, 255); // #C75433
+			//ImU32 onBloom = IM_COL32(149, 43, 32, 255); // #952B20
+
+			//DrawGlowRect(dl, ledMin, ledMax,
+			//	onCore, onMid, onOuter, ledRound,
+			//	/*layers=*/10, /*spread=*/1.2f);
+
+			//DrawGlowBorder(dl, ledMin, ledMax,
+			//	onMid, onBloom, ledRound,
+			//	/*layers=*/6, /*spread=*/1.1f);
+					//	// ON blink — gold bloom
+			if (flashVisible)
+			{
+				ImU32 onCore = IM_COL32(247, 183, 32, 255); // #F7B720
+				ImU32 onMid = IM_COL32(244, 144, 39, 255); // #F49027
+				ImU32 onOuter = IM_COL32(199, 84, 51, 255); // #C75433
+				ImU32 onBloom = IM_COL32(149, 43, 32, 255); // #952B20
+
+				DrawGlowRect(dl, ledMin, ledMax,
+					onCore, onMid, onOuter, ledRound,
+					/*layers=*/10, /*spread=*/1.2f);
+
+				DrawGlowBorder(dl, ledMin, ledMax,
+					onMid, onBloom, ledRound,
+					/*layers=*/6, /*spread=*/1.1f);
+			}
+		}
+		else
+		{
+			// OFF — flashes between red ember and completely invisible
+			if (flashVisible)
+			{
+				DrawGlowRect(dl, ledMin, ledMax,
+					coreHot, coreMid, coreOuter, ledRound,
+					/*layers=*/10, /*spread=*/1.2f);
+
+				DrawGlowBorder(dl, ledMin, ledMax,
+					borderHot, glowBloom, ledRound,
+					/*layers=*/6, /*spread=*/1.1f);
+			}
+			// else: draw nothing — LED is fully invisible on this flash cycle
+		}
+	}
 
 
 
@@ -1083,6 +1403,22 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 	{	
 
 		ImGui::Begin("Laser Turret Control Panel");
+		ImGui::SetNextWindowBgAlpha(0.82f);
+		ImGuiStyle& style = ImGui::GetStyle();
+
+		style.WindowBorderSize = 0.0f;   // disables the flat built-in border
+		style.WindowRounding = 5.0f;   // slightly rounded corners (4–6 is the sweet spot)
+		style.FrameBorderSize = 1.0f;   // thin border on inputs/buttons
+		style.FrameRounding = 3.0f;   // rounded input fields
+		style.ChildRounding = 4.0f;   // rounded child panels
+		style.PopupRounding = 4.0f;
+		style.ScrollbarRounding = 3.0f;
+		style.GrabRounding = 3.0f;   // rounded slider grabs
+		style.WindowPadding = ImVec2(10.0f, 10.0f);
+		style.FramePadding = ImVec2(6.0f, 4.0f);
+		style.ItemSpacing = ImVec2(8.0f, 5.0f);
+		style.ScrollbarSize = 10.0f;  // slimmer scrollbar
+		DrawEVAGlowBorder();
 			DrawWormholeGridBackground();
 
 
@@ -1235,13 +1571,18 @@ void DrawRetroStatusLED(const char* label, bool isOn, ImVec2 pos)
 		ImVec2 indicatorStart = ImGui::GetCursorScreenPos();
 		float time = ImGui::GetTime();
 
-		DrawRetroStatusLED("Networking",isNetworkConnected,  indicatorStart);
-		DrawRetroStatusLED("COMs", isComPortConnected, ImVec2(indicatorStart.x, indicatorStart.y + 25));
-		/*DrawRetroStatusLED("COM In", comPortHasInput, ImVec2(indicatorStart.x, indicatorStart.y + 50));*/
-		DrawRetroStatusLED("COM In", inputTriggerLED, ImVec2(indicatorStart.x, indicatorStart.y + 50));
-		/*DrawRetroStatusLED("COM Out", comPortHasOutput, ImVec2(indicatorStart.x, indicatorStart.y + 75));*/
-		DrawRetroStatusLED("COM Out", outputTriggerLED, ImVec2(indicatorStart.x, indicatorStart.y + 75));
+		ImFont* evaFont = ImGui::GetIO().Fonts->Fonts[1];
 
+		ImGui::PushFont(evaFont);
+
+		
+		DrawRetroStatusLED("Networking",isNetworkConnected,  indicatorStart);
+		DrawRetroStatusLED("COMs", isComPortConnected, ImVec2(indicatorStart.x, indicatorStart.y + 40));
+		/*DrawRetroStatusLED("COM In", comPortHasInput, ImVec2(indicatorStart.x, indicatorStart.y + 50));*/
+		DrawRetroStatusLED("COM In", inputTriggerLED, ImVec2(indicatorStart.x, indicatorStart.y + 80));
+		/*DrawRetroStatusLED("COM Out", comPortHasOutput, ImVec2(indicatorStart.x, indicatorStart.y + 75));*/
+		DrawRetroStatusLED("COM Out", outputTriggerLED, ImVec2(indicatorStart.x, indicatorStart.y + 120));
+		ImGui::PopFont();
 		// Use Dummy to push the cursor so the next widgets don't overlap
 		ImGui::Dummy(ImVec2(150, 80)); // reserve space
 
@@ -1596,10 +1937,12 @@ std::string ExampleLayer::m_Out; // Cherno would smite me for this.
 
 Walnut::Application* Walnut::CreateApplication(int argc, char** argv)
 {
+
 	Walnut::ApplicationSpecification spec;
 	spec.Name = "Serial Comunication Walnut App";
 	spec.Height = 600;
 	spec.Width = 1200;
+
 
 	Walnut::Application* app = new Walnut::Application(spec);
 	app->PushLayer<ExampleLayer>();
